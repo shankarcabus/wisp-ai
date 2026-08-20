@@ -36,7 +36,7 @@ cp "$HERE/Info.plist" "$APP/Contents/Info.plist"
 # tooling. With a positive list, every new module had to be remembered here —
 # and forgetting one is not a build error, just an app that starts and dies on
 # an import. That is exactly what happened with config.py.
-BENCH="provision_wifi.py install_hook.py capture_imu.py flash.py tools.py"
+BENCH="provision_wifi.py install_hook.py capture_imu.py flash.py tools.py test_limits.py"
 for f in "$ROOT"/bridge/*.py; do
     name="$(basename "$f")"
     case " $BENCH " in *" $name "*) continue ;; esac
