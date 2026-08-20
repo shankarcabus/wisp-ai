@@ -193,8 +193,12 @@ class State:
         # Limits fetched LIVE by the menu bar app, which has its own keychain
         # access. Takes precedence over Claude Code's on-disk cache, which is
         # only rewritten when something triggers a fetch — seen stuck 3 days.
-        self.live_limits = None
-        self.live_limits_at = 0.0
+        #
+        # Loaded from disk on boot, on purpose: restarting the bridge is not a
+        # reason to forget a reading. The app restarts the bridge whenever it
+        # is relaunched, and starting empty meant falling straight back to a
+        # two-day-old cache showing windows that had already reset.
+        self.live_limits, self.live_limits_at = limits.load_live()
         self.limits_error = ""
         # Who was the last NON-local client to fetch /state, and when. That is
         # how we know the board is alive: it is the only thing fetching from
@@ -422,7 +426,14 @@ class State:
 
         options = []
         if live:
-            r = limits.normalize(live, int(time.time() - fetched))
+            # max(0, ...) e do upstream, e vale manter apesar de estarmos
+            # preferindo a nossa versao aqui: quando esta funcao foi escrita,
+            # `fetched` so podia vir de um time.time() do proprio processo. Com
+            # o load_live() que este merge trouxe, ele agora vem de um ARQUIVO —
+            # e um relogio torto ou um limits.json editado a mao produziria
+            # idade negativa, que ganharia o min() abaixo com um numero sem
+            # sentido. O guarda responde a um risco que o merge criou.
+            r = limits.normalize(live, int(max(0, time.time() - fetched)))
             if r.get("ok"):
                 r["source"] = "live"
                 options.append(r)
@@ -622,15 +633,22 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, json.JSONDecodeError):
                 self._send(400, {"error": "json"})
                 return
+            now = time.time()
             with STATE.lock:
                 if "error" in payload:
                     # App failure: we keep the reason and do NOT touch the last
-                    # good data, which may still be within its deadline.
+                    # good reading, which is still the best one we have.
                     STATE.limits_error = str(payload["error"])[:200]
+                    fresh = False
                 else:
                     STATE.live_limits = payload
-                    STATE.live_limits_at = time.time()
+                    STATE.live_limits_at = now
                     STATE.limits_error = ""
+                    fresh = True
+            # Outside the lock: this writes a file, and the /state the board is
+            # polling every 600ms takes the same lock.
+            if fresh:
+                limits.save_live(payload, now)
             self._send(200, {"ok": True})
             return
 

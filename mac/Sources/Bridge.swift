@@ -110,6 +110,10 @@ final class Bridge: ObservableObject {
     /// hour later.
     private var donePending = false
     private var lastLimitsFetch: Date?
+    /// A fetch already under way. Without this, a keychain waiting on a dialog
+    /// gets a SECOND request on top ten minutes later — and each one is another
+    /// dialog. One question at a time.
+    private var fetching = false
     /// Backoff survives a relaunch, on purpose.
     ///
     /// It used to live only in memory, and that defeated it: every launch
@@ -180,9 +184,19 @@ final class Bridge: ObservableObject {
         env["WISP_PARENT"] = "\(ProcessInfo.processInfo.processIdentifier)"
         p.environment = env
 
+        // The strong binding before the Task is not a style choice.
+        //
+        // A weak reference is a VAR — it can be zeroed at any moment — and
+        // reading one from inside concurrently-executing code is an error on
+        // Swift 5.10, which is what the CI runner compiles with. Swift 6 reads
+        // the same lines and says nothing, so this broke for everyone cloning
+        // with an older Xcode while building fine on the machine it was
+        // written on.
         p.terminationHandler = { [weak self] finished in
+            guard let self else { return }
+            let status = finished.terminationStatus
             Task { @MainActor in
-                self?.processDied(status: finished.terminationStatus)
+                self.processDied(status: status)
             }
         }
 
@@ -272,7 +286,14 @@ final class Bridge: ObservableObject {
 
     /// Decides whether it is time to ask. Called on every /app poll, which
     /// already runs every 2 seconds — it needs no timer of its own.
-    private func maybeFetchLimits(done: Int?) async {
+    ///
+    /// `expired` is a window whose reset has already gone by. It is the third
+    /// trigger and the only one that fires with the machine idle: a rolled-over
+    /// percentage is not stale, it is WRONG — after the reset the real usage
+    /// drops, so what is on screen alarms you over a period that no longer
+    /// exists. Waiting up to an hour to correct that was the visible half of
+    /// this bug.
+    private func maybeFetchLimits(done: Int?, expired: Bool) async {
         guard fetchLimits, state.alive else { return }
         let now = Date()
 
@@ -288,16 +309,22 @@ final class Bridge: ObservableObject {
             await fetchNow()                          // first time
             return
         }
+        // The floor comes first and applies to every trigger: it is the only
+        // thing standing between a fast iteration and a self-inflicted 429.
         let since = now.timeIntervalSince(last)
-        if since >= Self.limitsCeiling || (donePending && since >= Self.limitsFloor) {
+        guard since >= Self.limitsFloor else { return }
+        if since >= Self.limitsCeiling || donePending || expired {
             await fetchNow()
         }
     }
 
     private func fetchNow() async {
+        guard !fetching else { return }
+        fetching = true
         donePending = false
         lastLimitsFetch = Date()
         await updateLimits()
+        fetching = false
     }
 
     private func startPolling() {
@@ -306,7 +333,8 @@ final class Bridge: ObservableObject {
         // 2s: the panel is only visible while open, and nothing here changes
         // fast enough to justify more.
         let t = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in await self?.poll() }
+            guard let self else { return }
+            Task { @MainActor in await self.poll() }
         }
         RunLoop.main.add(t, forMode: .common)
         timer = t
@@ -333,7 +361,8 @@ final class Bridge: ObservableObject {
             let (raw, _) = try await URLSession.shared.data(for: req)
             data = try JSONDecoder().decode(AppState.self, from: raw)
             pollError = nil
-            await maybeFetchLimits(done: data?.tasks_done)
+            await maybeFetchLimits(done: data?.tasks_done,
+                                   expired: data?.limits.contains { $0.expired } ?? false)
         } catch {
             pollError = error.localizedDescription
         }
