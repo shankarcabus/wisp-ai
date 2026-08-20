@@ -384,31 +384,54 @@ class State:
 
         return snap
 
-    # Past this the live data stops counting and we fall back to the cache.
-    # 10 min is twice the TTL Claude Code itself uses (5 min); if the app
-    # stopped fetching, showing the cache with its age beats a frozen number.
-    LIVE_VALID_S = 600
-
     def subscription_limits(self) -> dict:
         """
-        Subscription limits, from the best source available.
+        Subscription limits, from the FRESHEST source available.
 
-        Order: whatever the app fetched live, otherwise Claude Code's on-disk
+        Two sources: whatever the app fetched live, and Claude Code's on-disk
         cache. The app can only fetch because it has its own keychain access,
         through the macOS API and with your consent — the bridge never sees the
         credential, which is why it can still run on its own in a terminal.
+
+        THE CRITERION IS AGE, NOT PROVENANCE
+        ------------------------------------
+        This used to give the live data a 10-minute deadline and fall back to
+        the cache past it, no matter how old the cache was. Those two clocks
+        never agreed: the app only refetches on the hour when nobody is working
+        (see limitsCeiling in Bridge.swift), so for up to 50 minutes of every
+        hour the freshest number on the machine was thrown away in favour of
+        whatever was on disk.
+
+        And what is on disk can be ANCIENT. Claude Code only rewrites
+        cachedUsageUtilization when something makes it fetch; go weeks without
+        opening /usage and it does not move. Measured on this machine: the file
+        sat 24.7 days old while a 20-minute-old live reading was being
+        discarded, and the board proudly displayed "35608 min ago".
+
+        Comparing ages has no such failure mode. If the app stops fetching, the
+        cache becomes the fresher of the two on its own and wins without any
+        deadline to tune.
         """
         with self.lock:
             live, fetched = self.live_limits, self.live_limits_at
-        if live and time.time() - fetched < self.LIVE_VALID_S:
+
+        options = []
+        if live:
             r = limits.normalize(live, int(time.time() - fetched))
             if r.get("ok"):
                 r["source"] = "live"
-                return r
-        r = limits.read()
-        if r.get("ok"):
-            r["source"] = "cache"
-        return r
+                options.append(r)
+
+        cache = limits.read()
+        if cache.get("ok"):
+            cache["source"] = "cache"
+            options.append(cache)
+
+        if not options:
+            # No usable source. Return the cache's verdict, because its reason
+            # is the one worth reading: it says WHY there is nothing to show.
+            return cache
+        return min(options, key=lambda o: o["age_s"])
 
     def refresh_usage(self) -> None:
         """Recomputes today's usage in the background."""

@@ -147,6 +147,21 @@ def normalize(utilization, age_s: int) -> dict:
     if not bars:
         return {"ok": False, "reason": "no limits in the payload"}
 
+    # EVERY window closed: there is nothing left in here to report.
+    #
+    # One expired bar among valid ones is ordinary — the 5h window resets while
+    # the weekly one is still open. ALL of them expired is a different thing:
+    # the payload describes a period that has ended, so every percentage in it
+    # is wrong, and wrong in the direction that alarms you, because real usage
+    # drops at the reset. Measured: a cache frozen for 24 days put "88% weekly,
+    # 35608 min ago" on the board while the actual week sat at 41%.
+    #
+    # This lives in normalize() and not in read() because it is a property of
+    # the PAYLOAD, not of where it came from: a live fetch that somehow answered
+    # with a closed window is just as worthless as a stale file.
+    if all(b["expired"] for b in bars):
+        return {"ok": False, "reason": "every window in the payload has already reset"}
+
     peak = max(bars, key=lambda b: b["pct"])
     return {
         "ok": True,
