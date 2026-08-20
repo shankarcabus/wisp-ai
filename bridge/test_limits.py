@@ -98,6 +98,62 @@ check("passes a payload with every window open",
       r.get("ok") and r.get("peak") == 41, f"got {r}")
 
 
+print("\nelapsed_pct() — where the pace mark goes")
+
+# The plain reading: half the 5h window spent, so the mark sits at half the bar.
+r = limits.normalize({"limits": [_bar("session", 20, _iso(hours=2, minutes=30), active=True)]},
+                     age_s=0)
+check("half of a 5h window spent puts the mark at 50%",
+      r["bars"][0]["elapsed_pct"] == 50, f"got {r['bars'][0].get('elapsed_pct')}")
+
+r = limits.normalize({"limits": [_bar("weekly_all", 30, _iso(days=3, hours=12))]}, age_s=0)
+check("half of the 7d window spent puts the mark at 50%",
+      r["bars"][0]["elapsed_pct"] == 50, f"got {r['bars'][0].get('elapsed_pct')}")
+
+# The Fable card is a weekly window like any other.
+r = limits.normalize({"limits": [_bar("weekly_scoped", 10, _iso(days=5, hours=6))]}, age_s=0)
+check("the scoped weekly window uses the 7d length too",
+      r["bars"][0]["elapsed_pct"] == 25, f"got {r['bars'][0].get('elapsed_pct')}")
+
+# THE STALENESS TRAP, and the reason this function takes age_s at all.
+#
+# A cache read two hours ago, describing a 5h window that still has 3h left AT
+# THE TIME IT WAS READ. The percentage in that payload is frozen at the moment
+# of measurement, so the mark has to be frozen there too: elapsed = 0.
+#
+# Computing against *now* instead would put the mark at 40% next to a fill that
+# never moved, and the card would read as "way under pace" purely because the
+# data got old. That is the same failure this whole file exists to hold down —
+# a stale number that looks like news — so it gets a test of its own.
+r = limits.normalize({"limits": [_bar("session", 5, _iso(hours=3), active=True)]},
+                     age_s=2 * 3600)
+check("a stale cache marks the pace at the instant it was MEASURED",
+      r["bars"][0]["elapsed_pct"] == 0, f"got {r['bars'][0].get('elapsed_pct')}")
+
+# A window that just opened: nothing spent yet, and 0 is an answer, not a gap.
+r = limits.normalize({"limits": [_bar("session", 0, _iso(hours=5))]}, age_s=0)
+check("a window that just opened marks 0, not nothing",
+      r["bars"][0]["elapsed_pct"] == 0, f"got {r['bars'][0].get('elapsed_pct')}")
+
+# No length known for the kind -> no mark. Better an absent mark than one drawn
+# against a window length we guessed.
+r = limits.normalize({"limits": [_bar("monthly_mystery", 40, _iso(days=2))]}, age_s=0)
+check("an unknown kind gets no mark at all",
+      r["bars"][0]["elapsed_pct"] is None, f"got {r['bars'][0].get('elapsed_pct')}")
+
+# A reset further out than the window itself cannot be described by it.
+r = limits.normalize({"limits": [_bar("session", 40, _iso(hours=9))]}, age_s=0)
+check("a reset beyond the window length gets no mark",
+      r["bars"][0]["elapsed_pct"] is None, f"got {r['bars'][0].get('elapsed_pct')}")
+
+# Already reset: the bar is flagged expired and there is no live window to pace.
+r = limits.normalize({"limits": [_bar("session", 3, _iso(minutes=-2)),
+                                 _bar("weekly_all", 41, _iso(days=5), active=True)]},
+                     age_s=600)
+check("an expired window gets no mark",
+      r["bars"][0]["elapsed_pct"] is None, f"got {r['bars'][0].get('elapsed_pct')}")
+
+
 print("\nsubscription_limits() — the criterion is age, not provenance")
 
 _real_read = limits.read
