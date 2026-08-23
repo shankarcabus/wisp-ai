@@ -70,23 +70,35 @@ E canvas por mascote está fora: 224×224 em RGB565 são 100KB, o C6 não tem PS
 e este firmware já registrou **4,7KB** de RAM interna mínima
 (`firmware/main/ui.c:27-31`).
 
-### O mascote nunca é pequeno na placa
+### A placa desenha UM mascote, sempre, a 306px
 
-`vaga_de()` (`firmware/main/ui.c:388`) fixa três tamanhos e só três: **306px**
-com uma sessão, **178px** com duas, **140px** com três ou quatro. O piso é 140,
-não algo perto de 60 — 60px é o mascote do app do Mac, outra superfície.
+`ui_update()` força `n = 1` (`firmware/main/ui.c:1319`) com justificativa
+escrita logo acima: dividir a tela em dois ou quatro foi tentado e abandonado,
+porque *"a imagem encolhe para caber na vaga e sai CORTADA, porque o PNG tem
+proporção própria e a vaga não"*, e porque quatro bonecos em miniatura são
+quatro caras idênticas, nenhuma legível de longe. As sessões extras aparecem
+como **lista de texto** sob o rótulo, não como mascotes.
 
-Isso derruba duas complicações que este desenho carregava por engano: não é
-preciso limiar para esconder props em tamanho pequeno, porque tamanho pequeno não
-acontece; e não é preciso arredondar o tamanho do mascote para o grid, porque um
-prop é um sprite próprio e pode receber uma escala inteira sua, calculada a
-partir dos 140/178/306 sem tocar em `vaga_de()`.
+Ou seja: os ramos de 178px e 140px em `vaga_de()` (`:388`) são **inalcançáveis
+hoje**. O mascote na placa tem 306px e ponto.
 
-E não tocar ali importa: o comentário do próprio código explica que os 306px são
-exatamente o tamanho da arte em `assets/`, que imagem maior que o objeto sai
-**cortada** e não reduzida, e que a conta vertical fecha justa. É geometria
-afinada à mão; mexer nela para acomodar um personagem novo seria trocar um
-problema resolvido por um problema em aberto.
+Isso simplifica o desenho mais do que qualquer outra coisa neste documento.
+Cai por terra: o limiar para esconder props em tamanho pequeno, o arredondamento
+do tamanho para o grid, a preocupação com escala inteira, a contagem de objetos
+multiplicada por quatro, e o caso apertado que ia decidir se o híbrido fecha.
+Não há caso apertado. Há uma cara de 306px.
+
+Duas consequências que ficam:
+
+- O personagem novo deve continuar **medindo tudo em fração de `d`** em vez de
+  assumir 306. Não por rigor abstrato: é o que mantém possível ressuscitar
+  vários mascotes depois, e o motivo do abandono — proporção fixa de PNG —
+  **não se aplica a um personagem feito de objetos**, que escala limpo. É uma
+  porta que este trabalho deixa aberta sem custo, e não uma que ele atravessa.
+- `vaga_de()` continua intocada. O comentário dela explica que os 306px são
+  exatamente o tamanho da arte em `assets/`, que imagem maior que o objeto sai
+  **cortada** e não reduzida, e que a conta vertical fecha justa. Geometria
+  afinada à mão não se mexe para acomodar personagem novo.
 
 ### Objetos LVGL não pagam esse custo
 
@@ -101,8 +113,8 @@ minúsculos** que trocam só na mudança de estado.
 
 **Cara.** Silhueta em degraus de três tons a partir de retângulos arredondados,
 mais olhos, sobrancelha e boca em blocos. Cerca de doze objetos. Independente de
-resolução: sem grid, sem escala inteira, nada a acertar entre 140 e 306px. Anima
-pelo
+resolução: sem grid, sem escala inteira, nada a acertar — a cara tem sempre
+306px na placa. Anima pelo
 `animar_um()` que já existe — respiração, squash, flutuação, tilt — mais piscar,
 que fica barato.
 
@@ -119,9 +131,9 @@ restrição técnica e virou decisão de autoria** — quanto detalhe você quer
 adornos. 32 é onde a folha de referência já está.
 
 **Escala dos props.** Cada prop recebe um multiplicador inteiro derivado do
-tamanho do mascote em cena — nos 140px do caso apertado, um laptop de 20 pixels
-de arte a 4× dá 80px, que lê bem. O cálculo mora em `mascote_pixel.c` e não
-atravessa a fronteira: `vaga_de()` e `aplicar_layout()` ficam como estão.
+tamanho do mascote — a 306px uma unidade de arte tem 13px, então um laptop de 20
+unidades sai com 260px de largura, folgado. O cálculo mora em `mascote_pixel.c`
+e não atravessa a fronteira: `vaga_de()` e `aplicar_layout()` ficam como estão.
 
 **Mapeamento.** Os oito estados da referência caem um a um nos do Wisp:
 parado→`idle`, pensando→`working`, trabalhando→`tool`, perguntando→`asking`,
@@ -212,8 +224,8 @@ pronto antes dos números do passo 5.
 O simulador **não** prova custo de render: o Mac tem CPU e RAM de sobra e nenhuma
 das restrições acima existe lá. Isso não é um detalhe do plano, é o risco central.
 
-O que precisa ser medido **na placa**, com o personagem novo e quatro sessões em
-cena:
+O que precisa ser medido **na placa**, com o personagem novo em cena (um
+mascote de 306px, que é o único caso que existe):
 
 - FPS pelo contador que já existe em `ui.c` (`g_refrescos`);
 - RAM interna mínima, contra os 4,7KB registrados;
@@ -228,10 +240,10 @@ por compilação — não há placa S3 nesta bancada.
 
 ## Riscos
 
-- **Doze objetos é estimativa, não medida.** Se a silhueta em degraus exigir
-  muito mais formas, o custo por mascote sobe e com quatro em cena pode não
-  fechar. O passo 4 é onde isso aparece; se aparecer, a saída é reduzir os
-  degraus, não voltar para bitmap.
+- **Doze objetos é estimativa, não medida** — mas o risco encolheu muito com o
+  achado de um mascote só. Doze objetos numa tela, e não quarenta e oito em
+  quatro, é uma ordem de grandeza a menos de pressão. Se ainda assim não
+  fechar, a saída é reduzir os degraus, não voltar para bitmap.
 - **A extração pode mudar o Terminal sem querer.** Mitigação: o simulador vem
   antes da extração, para haver com o que comparar.
 - **A arte dos props precisa ser autorada.** A folha de referência é estilo, não
