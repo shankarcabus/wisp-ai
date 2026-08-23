@@ -47,6 +47,9 @@ static EventGroupHandle_t s_eventos;
 #define BIT_CONECTADO BIT0
 static char s_host[64] = {0};      /* ex.: "Marcios-MacBook-Pro-6.local" */
 static char s_token[64] = {0};     /* segredo compartilhado com o bridge */
+/* Personagem que o bridge mandou no último payload. Vazio = o bridge nunca
+ * mandou, e aí a escolha que vale é a que está na NVS. */
+static char s_mascote_rx[16] = {0};
 static char s_ip[16]   = {0};      /* resolvido por mDNS */
 static wisp_data_t s_dados;
 static esp_lcd_panel_handle_t s_painel = NULL;   /* guardado para rotacionar */
@@ -822,6 +825,14 @@ static bool interpretar(const char *json, wisp_data_t *d)
     cJSON *raiz = cJSON_Parse(json);
     if (!raiz) return false;
 
+    /* Personagem. Campo AUSENTE não é "volte ao padrão": é "mantenha o que você
+     * tem". Instalação nova e bridge anterior a isto caem aqui, e nenhum dos
+     * dois deve derrubar a escolha que já está na NVS. Por isso a string só é
+     * sobrescrita quando o campo existe e não está vazio. */
+    const cJSON *mc = cJSON_GetObjectItemCaseSensitive(raiz, "mascot");
+    if (cJSON_IsString(mc) && mc->valuestring && mc->valuestring[0])
+        copiar_str(s_mascote_rx, sizeof(s_mascote_rx), raiz, "mascot");
+
     /* Uma sessao do Claude = um mascote. O bridge manda em "s", mais
      * recentes primeiro, ja limitado a WISP_MAX_SESSIONS. */
     d->session_count = 0;
@@ -890,6 +901,42 @@ static bool interpretar(const char *json, wisp_data_t *d)
 
     cJSON_Delete(raiz);
     return true;
+}
+
+/* Troca o personagem e guarda a escolha.
+ *
+ * Chamada a cada payload. Quem decide se há o que fazer é ui_personagem(), que
+ * sai fora quando o nome já é o ativo — concentrar a pergunta "mudou?" num lugar
+ * é o que evita dois lugares discordando.
+ *
+ * A GRAVAÇÃO NA NVS só acontece quando o nome difere do gravado. Escrever a cada
+ * poll desgastaria flash por nada, e o ganho é real: uma placa que reinicia com o
+ * bridge fora do ar sobe no último personagem escolhido, e não no de fábrica —
+ * o que transforma a pergunta do provisionamento em valor inicial, e não na
+ * única forma de escolher. */
+static void aplicar_personagem(const char *nome)
+{
+    if (!nome || !*nome) return;
+
+    static char ultimo[16] = {0};
+    if (strcmp(ultimo, nome) == 0) return;   /* nada mudou desde o último poll */
+
+    ui_personagem(nome);
+
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        char gravado[16] = {0};
+        size_t n = sizeof(gravado);
+        if (nvs_get_str(h, "mascot", gravado, &n) != ESP_OK) gravado[0] = '\0';
+        if (strcmp(gravado, nome) != 0) {
+            if (nvs_set_str(h, "mascot", nome) == ESP_OK && nvs_commit(h) == ESP_OK)
+                ESP_LOGI(TAG, "personagem \"%s\" gravado na NVS", nome);
+            else
+                ESP_LOGW(TAG, "nao consegui gravar o personagem na NVS");
+        }
+        nvs_close(h);
+    }
+    snprintf(ultimo, sizeof(ultimo), "%s", nome);
 }
 
 static void tarefa_rede(void *arg)
@@ -963,6 +1010,10 @@ static void tarefa_rede(void *arg)
         if (r == ESP_OK && status == 200 && c.usado > 0) {
             falhas = 0;
             if (interpretar(buf, &s_dados)) {
+                /* Antes do ui_update: se o personagem trocou, são os objetos
+                 * NOVOS que têm de receber estes dados. */
+                aplicar_personagem(s_mascote_rx);
+
                 /* Depois do interpretar: a bateria e medida aqui, nao vem do
                  * bridge, e nao pode ser sobrescrita pela resposta dele. */
                 s_dados.battery_pct = s_bat_pct;
