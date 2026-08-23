@@ -176,6 +176,8 @@ void cena_ajuda(void)
            "          tile <0|1> | bat <pct|-1> | lim | nolim\n"
            "          shot <arquivo.bmp> | sprite <pasta> | quit | ?\n"
            "          char <terminal|bytelo> | heap\n"
+           "ajustes : acao <0|1> | proj <0|1> | idioma <en|pt>"
+           " | tam <small|medium|large>\n"
            "personagem: escolhido no boot — WISP_MASCOT=bytelo ./sim/build/wisp-sim\n"
            "estados : idle working tool asking waiting done error offline\n");
 }
@@ -225,6 +227,21 @@ void cena_comando(const char *linha)
          * tela deixava os objetos compartilhados do Terminal apontando para
          * memória liberada. */
         ui_personagem(arg);
+        ui_update(&d);
+        return;
+    } else if (!strcmp(cmd, "acao") || !strcmp(cmd, "proj")
+            || !strcmp(cmd, "idioma") || !strcmp(cmd, "tam")) {
+        /* Quatro comandos e não um com quatro argumentos posicionais: posicional
+         * se erra na terceira vez que se usa. O estado é estático porque
+         * ui_configurar() recebe o conjunto inteiro, não o delta. */
+        static wisp_cfg_t c = {.acao = true, .projetos = true,
+                               .pt = false, .tamanho = 1};
+        if      (!strcmp(cmd, "acao"))   c.acao = (atoi(arg) != 0);
+        else if (!strcmp(cmd, "proj"))   c.projetos = (atoi(arg) != 0);
+        else if (!strcmp(cmd, "idioma")) c.pt = !strcmp(arg, "pt");
+        else                             c.tamanho = !strcmp(arg, "small") ? 0
+                                                   : (!strcmp(arg, "large") ? 2 : 1);
+        ui_configurar(&c);
         ui_update(&d);
         return;
     } else if (!strcmp(cmd, "heap")) {

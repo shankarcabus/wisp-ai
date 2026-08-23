@@ -3,6 +3,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -79,6 +80,22 @@ void ui_update(const wisp_data_t *d);
 void ui_swipe(int direction);
 
 /* Converts the JSON "st" field into the enum. Unknown -> WISP_IDLE. */
+/* Ajustes de interface, vindos do painel do Mac pela chave `ui` do /state.
+ *
+ * Os padrões destes campos são o comportamento de antes de eles existirem, para
+ * uma placa que nunca receba a chave não mudar de cara. */
+typedef struct {
+    bool    acao;      /* mostrar o rótulo de detalhe */
+    bool    projetos;  /* mostrar a lista de projetos */
+    bool    pt;        /* texto em português; false = inglês */
+    uint8_t tamanho;   /* 0 pequeno, 1 médio, 2 grande */
+} wisp_cfg_t;
+
+/* Aplica os ajustes. Toma o mutex do LVGL sozinha — chamável de qualquer task.
+ * Igual ao que já vale não faz nada, então quem chama pode chamar a cada
+ * payload sem se perguntar se mudou. */
+void ui_configurar(const wisp_cfg_t *c);
+
 /* Troca o personagem desenhado, reconstruindo os objetos da tela.
  *
  * Toma o mutex do LVGL sozinha — chamável de qualquer task. Nome nulo, vazio,

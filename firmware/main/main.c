@@ -50,6 +50,10 @@ static char s_token[64] = {0};     /* segredo compartilhado com o bridge */
 /* Personagem que o bridge mandou no último payload. Vazio = o bridge nunca
  * mandou, e aí a escolha que vale é a que está na NVS. */
 static char s_mascote_rx[16] = {0};
+
+/* Ajustes de interface vindos do payload. Os padrões são o comportamento de
+ * antes de eles existirem: uma placa cujo bridge é anterior a isto não muda. */
+static wisp_cfg_t s_cfg = {.acao = true, .projetos = true, .pt = false, .tamanho = 1};
 static char s_ip[16]   = {0};      /* resolvido por mDNS */
 static wisp_data_t s_dados;
 static esp_lcd_panel_handle_t s_painel = NULL;   /* guardado para rotacionar */
@@ -833,6 +837,25 @@ static bool interpretar(const char *json, wisp_data_t *d)
     if (cJSON_IsString(mc) && mc->valuestring && mc->valuestring[0])
         copiar_str(s_mascote_rx, sizeof(s_mascote_rx), raiz, "mascot");
 
+    /* Ajustes de interface. Chave ausente, ou uma das quatro ausente, mantém o
+     * que já vale — é o mesmo contrato do personagem, e é o que faz uma placa
+     * com bridge antigo continuar exatamente igual. */
+    const cJSON *cfg = cJSON_GetObjectItemCaseSensitive(raiz, "ui");
+    if (cJSON_IsObject(cfg)) {
+        const cJSON *v;
+        if (cJSON_IsBool(v = cJSON_GetObjectItemCaseSensitive(cfg, "action_label")))
+            s_cfg.acao = cJSON_IsTrue(v);
+        if (cJSON_IsBool(v = cJSON_GetObjectItemCaseSensitive(cfg, "project_label")))
+            s_cfg.projetos = cJSON_IsTrue(v);
+        if (cJSON_IsString(v = cJSON_GetObjectItemCaseSensitive(cfg, "language")))
+            s_cfg.pt = (strcmp(v->valuestring, "pt") == 0);
+        if (cJSON_IsString(v = cJSON_GetObjectItemCaseSensitive(cfg, "size"))) {
+            const char *tam = v->valuestring;
+            s_cfg.tamanho = !strcmp(tam, "small") ? 0
+                          : (!strcmp(tam, "large") ? 2 : 1);
+        }
+    }
+
     /* Uma sessao do Claude = um mascote. O bridge manda em "s", mais
      * recentes primeiro, ja limitado a WISP_MAX_SESSIONS. */
     d->session_count = 0;
@@ -1013,6 +1036,9 @@ static void tarefa_rede(void *arg)
                 /* Antes do ui_update: se o personagem trocou, são os objetos
                  * NOVOS que têm de receber estes dados. */
                 aplicar_personagem(s_mascote_rx);
+                /* Depois do personagem: é ele que cria os objetos que os
+                 * ajustes vão dispor. */
+                ui_configurar(&s_cfg);
 
                 /* Depois do interpretar: a bateria e medida aqui, nao vem do
                  * bridge, e nao pode ser sobrescrita pela resposta dele. */

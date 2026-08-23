@@ -51,7 +51,10 @@ typedef struct {
      *
      * Desligado custa informação: aqueles dois textos são a ferramenta em
      * execução e a lista de projetos, então sem eles a tela diz o ESTADO e não
-     * diz qual sessão. */
+     * diz qual sessão.
+     *
+     * É o PADRÃO do personagem, não a decisão final: os ajustes do painel
+     * sobrepõem. Existe para um personagem novo não nascer sem opinião. */
     bool        rotulos;
 
     /* Uma vez por mascote, na construção da tela. */

@@ -198,6 +198,26 @@ static const char *NOME[WISP_COUNT] = {
     [WISP_ERROR] = "failed",        [WISP_OFFLINE] = "offline",
 };
 
+/* Os mesmos oito estados em português.
+ *
+ * NENHUMA das oito leva acento, e isso é escolha e não sorte: as Montserrat do
+ * LVGL não têm acento — é a restrição que o comentário acima registra — e uma
+ * palavra acentuada sairia como quadrado vazio. Foram tiradas da folha de
+ * referência do Bytelo, onde a única acentuada era "sem conexão", e "desligado"
+ * diz o mesmo.
+ *
+ * Quem acrescentar palavra com acento aqui vai ver o quadrado, e precisa saber
+ * por quê. */
+static const char *NOME_PT[WISP_COUNT] = {
+    [WISP_IDLE] = "parado",           [WISP_WORKING] = "pensando",
+    [WISP_TOOL] = "trabalhando",      [WISP_ASKING]  = "perguntando",
+    [WISP_WAITING] = "pedindo ajuda", [WISP_DONE]    = "pronto",
+    [WISP_ERROR] = "falhou",          [WISP_OFFLINE] = "desligado",
+};
+
+/* Os ajustes em vigor. Os padrões são o comportamento de antes de haver ajuste. */
+static wisp_cfg_t g_cfg = {.acao = true, .projetos = true, .pt = false, .tamanho = 1};
+
 typedef struct { int16_t d, x, y; const lv_font_t *f_det, *f_proj; } vaga_t;
 
 /* Uma sessão ocupa a tela toda; a partir de duas, divide.
@@ -241,14 +261,22 @@ static void aplicar_layout(int total)
         mascote_t *m = &g_m[i];
         bool ativo = i < total;
 
-        /* Os rótulos existem para qualquer personagem, mas aparecer é escolha
-         * dele: há personagem cuja composição é uma cara sozinha no quadro. */
-        const bool mostrar_rotulos = ativo && mascote_ativo()->rotulos;
-        lv_obj_t *rotulos[] = {m->detail, m->project};
-        for (size_t k = 0; k < 2; k++) {
-            if (!rotulos[k]) continue;
-            if (mostrar_rotulos) lv_obj_remove_flag(rotulos[k], LV_OBJ_FLAG_HIDDEN);
-            else                 lv_obj_add_flag(rotulos[k], LV_OBJ_FLAG_HIDDEN);
+        /* O personagem SUGERE, o ajuste MANDA. Um personagem cuja composição é
+         * uma cara sozinha no quadro (`rotulos` false) some com os dois por
+         * padrão; quem quiser um deles de volta pede no painel.
+         *
+         * Dois independentes, e não um: eles já são dois objetos, e querer a
+         * ação sem a lista de projetos é pedido legítimo. */
+        const bool sugere = mascote_ativo()->rotulos;
+        const bool ver_acao = ativo && sugere && g_cfg.acao;
+        const bool ver_proj = ativo && sugere && g_cfg.projetos;
+        if (m->detail) {
+            if (ver_acao) lv_obj_remove_flag(m->detail, LV_OBJ_FLAG_HIDDEN);
+            else          lv_obj_add_flag(m->detail, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (m->project) {
+            if (ver_proj) lv_obj_remove_flag(m->project, LV_OBJ_FLAG_HIDDEN);
+            else          lv_obj_add_flag(m->project, LV_OBJ_FLAG_HIDDEN);
         }
 
         vaga_t v; vaga_de(total, i, &v);
@@ -260,7 +288,7 @@ static void aplicar_layout(int total)
          * O ajuste é AQUI, e não no personagem: quem sabe por que o offset
          * existia é o layout. vaga_de() fica intocada. */
         int16_t cy = v.y;
-        if (!mostrar_rotulos && total <= 1) cy = 0;
+        if (!ver_acao && !ver_proj && total <= 1) cy = 0;
 
         /* x e y ficam guardados porque a animação do personagem precisa deles
          * para o que orbita o corpo, e chamar vaga_de() de lá seria o layout
@@ -289,6 +317,23 @@ static void aplicar_layout(int total)
         lv_obj_align(m->project, LV_ALIGN_TOP_MID, v.x, 240 + v.y + v.d / 2 + 52);
 
     }
+}
+
+void ui_configurar(const wisp_cfg_t *c)
+{
+    if (!c) return;
+    if (c->acao == g_cfg.acao && c->projetos == g_cfg.projetos
+        && c->pt == g_cfg.pt && c->tamanho == g_cfg.tamanho) return;
+
+    bsp_display_lock(-1);
+    g_cfg = *c;
+    /* Reaplicar o layout é o que faz os rótulos aparecerem ou sumirem, o mascote
+     * recentrar e o tamanho valer. O idioma entra no ui_update() que vem logo
+     * depois, quando o texto é reescrito. */
+    g_qtd = -1;
+    bsp_display_unlock();
+    ESP_LOGI(TAG, "ajustes: acao=%d projetos=%d pt=%d tamanho=%u",
+             c->acao, c->projetos, c->pt, (unsigned) c->tamanho);
 }
 
 void ui_personagem(const char *nome)
@@ -847,7 +892,24 @@ void ui_update(const wisp_data_t *d)
             mascote_t *m = &g_m[i];
             m->alvo = s->state;
 
-            const char *txt = s->detail[0] ? s->detail : NOME[s->state];
+            /* EM PORTUGUÊS, O ESTADO GANHA DO DETALHE.
+             *
+             * Em inglês a regra é a de sempre: o detalhe quando existe, o nome
+             * do estado quando não — e o detalhe é mais informativo, porque diz
+             * QUAL ferramenta está rodando.
+             *
+             * Em português não dá para manter isso: o detalhe vem do bridge e
+             * não é traduzível. São nomes próprios de ferramenta ("Bash",
+             * "Read", "Edit") e frases geradas em inglês ("approve plan"). Um
+             * rótulo que diz "Bash" com o resto da tela em português não está em
+             * português; está pela metade.
+             *
+             * O custo é real e está assumido: em português a tela diz o que o
+             * Claude está FAZENDO e não com o quê. Quem quer a ferramenta usa
+             * inglês. */
+            const char *txt = g_cfg.pt
+                            ? NOME_PT[s->state]
+                            : (s->detail[0] ? s->detail : NOME[s->state]);
             if (strncmp(txt, m->ult_detalhe, sizeof(m->ult_detalhe)) != 0) {
                 snprintf(m->ult_detalhe, sizeof(m->ult_detalhe), "%s", txt);
                 lv_label_set_text(m->detail, txt);
