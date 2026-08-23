@@ -70,6 +70,24 @@ E canvas por mascote está fora: 224×224 em RGB565 são 100KB, o C6 não tem PS
 e este firmware já registrou **4,7KB** de RAM interna mínima
 (`firmware/main/ui.c:27-31`).
 
+### O mascote nunca é pequeno na placa
+
+`vaga_de()` (`firmware/main/ui.c:388`) fixa três tamanhos e só três: **306px**
+com uma sessão, **178px** com duas, **140px** com três ou quatro. O piso é 140,
+não algo perto de 60 — 60px é o mascote do app do Mac, outra superfície.
+
+Isso derruba duas complicações que este desenho carregava por engano: não é
+preciso limiar para esconder props em tamanho pequeno, porque tamanho pequeno não
+acontece; e não é preciso arredondar o tamanho do mascote para o grid, porque um
+prop é um sprite próprio e pode receber uma escala inteira sua, calculada a
+partir dos 140/178/306 sem tocar em `vaga_de()`.
+
+E não tocar ali importa: o comentário do próprio código explica que os 306px são
+exatamente o tamanho da arte em `assets/`, que imagem maior que o objeto sai
+**cortada** e não reduzida, e que a conta vertical fecha justa. É geometria
+afinada à mão; mexer nela para acomodar um personagem novo seria trocar um
+problema resolvido por um problema em aberto.
+
 ### Objetos LVGL não pagam esse custo
 
 O vetorial atual anima porque cada parte é um objeto que o LVGL move e recolore —
@@ -83,7 +101,8 @@ minúsculos** que trocam só na mudança de estado.
 
 **Cara.** Silhueta em degraus de três tons a partir de retângulos arredondados,
 mais olhos, sobrancelha e boca em blocos. Cerca de doze objetos. Independente de
-resolução: sem grid, sem escala inteira, sem degradação a 60px. Anima pelo
+resolução: sem grid, sem escala inteira, nada a acertar entre 140 e 306px. Anima
+pelo
 `animar_um()` que já existe — respiração, squash, flutuação, tilt — mais piscar,
 que fica barato.
 
@@ -93,16 +112,16 @@ cara tem ~22–24 pixels de arte e a célula com adornos fecha em ~32. Cada prop
 custa a sua própria caixa, não o grid inteiro. Aparecem e desaparecem na troca de
 estado; nunca são transformados por quadro.
 
-Por que 32 e não os 20 do Clawdmeter nem 40: num caminho de bitmap o grid é
-orçamento e o menor tamanho manda — a 60px, quatro sessões em cena, um grid de 40
-não fecha em escala inteira e o de 20 raspa a 3×. No híbrido a cara não usa grid
-nenhum, então o grid virou só a malha em que os props são desenhados, e ali a
-resolução é ganho quase de graça.
+Por que 32 e não os 20 do Clawdmeter nem 40: num caminho de bitmap o grid seria
+orçamento, e aí o menor tamanho em cena mandaria. No híbrido a cara não usa grid
+nenhum e cada prop escolhe a própria escala inteira, então **o grid deixou de ser
+restrição técnica e virou decisão de autoria** — quanto detalhe você quer nos
+adornos. 32 é onde a folha de referência já está.
 
-**Limiar.** Abaixo de ~100px os props não são mostrados. A 60px um laptop de
-vinte pixels de arte não comunica nada, e a cara sozinha comunica tudo. Os 100px
-são ponto de partida, para ser acertado no simulador olhando as quatro
-disposições de sessão — não é constante fechada.
+**Escala dos props.** Cada prop recebe um multiplicador inteiro derivado do
+tamanho do mascote em cena — nos 140px do caso apertado, um laptop de 20 pixels
+de arte a 4× dá 80px, que lê bem. O cálculo mora em `mascote_pixel.c` e não
+atravessa a fronteira: `vaga_de()` e `aplicar_layout()` ficam como estão.
 
 **Mapeamento.** Os oito estados da referência caem um a um nos do Wisp:
 parado→`idle`, pensando→`working`, trabalhando→`tool`, perguntando→`asking`,
@@ -122,11 +141,11 @@ Passa a existir `mascote.h` com uma interface:
   personagem;
 - `aplicar(mascote_t *, wisp_state_t, uint32_t agora)` — leva as partes ao alvo
   do estado, chamada pelo timer que já existe;
-- `snap(int tamanho)` — devolve o tamanho ajustado. Serve aos props: quando eles
-  estão em cena, o tamanho do mascote é arredondado para um múltiplo da malha 32,
-  para os sprites caírem em escala inteira. Abaixo do limiar, e no Terminal, o
-  tamanho volta inalterado;
-- metadados: nome, se usa props, limiar mínimo.
+- metadados: nome, e se o personagem usa a partição de assets.
+
+Não há `snap()` nem limiar: como o piso de tamanho na placa é 140px e cada prop
+escolhe a própria escala, o personagem novo não precisa negociar geometria com o
+layout.
 
 Duas implementações, em arquivos próprios: `mascote_terminal.c` (o atual, com os
 dois caminhos — imagem e vetorial) e `mascote_pixel.c` (o novo). `ui.c` fica com
