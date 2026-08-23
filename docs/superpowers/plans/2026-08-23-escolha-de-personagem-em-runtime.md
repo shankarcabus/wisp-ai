@@ -789,6 +789,25 @@ MSG
 
 ---
 
+## As 4 tasks — FEITAS, e verificadas em hardware
+
+Em 23 de agosto de 2026:
+
+| task | como ficou verificada |
+|---|---|
+| 1 canal | `config.mascot()` com cinco casos (ausente, com quebra, sem quebra, com espaço, só quebra); campo presente e ausente no `/state` de um bridge de teste em outra porta, para não encostar no app rodando; e uma sonda contra o `setter` de `Sprites.chosen`, que publicou exatamente `"bytelo\n"` |
+| 2 `destruir` | 21 trocas com o Terminal no caminho **vetorial** (mais exigente, porque monta a cara inteira em objetos) e 20 com arte de imagem; as 64 transições depois de cada uma de três trocas; e o pool do LVGL de 46808 para 46840 bytes em 20 trocas — 32 bytes, onde um bloco vazado seriam centenas |
+| 3 aplicar e persistir | as duas placas compilam; verificada junto com a 4 |
+| 4 ponta a ponta | **na placa**: `personagem trocado` nos dois sentidos com `gravado na NVS`, sem regravar; e boot com o bridge encerrado subindo em `personagem: bytelo` |
+
+O que a execução ensinou:
+
+- **O bridge que roda é o de dentro do `~/Applications/Wisp.app`**, não o do repositório. Editar `bridge/server.py` e testar contra a porta 4666 não prova nada até o bundle instalado ser trocado. O contorno para verificar sem mexer no app de ninguém é subir um segundo bridge do repo em outra porta.
+- **A identidade "Wisp Dev" é o que torna a troca do bundle inócua** para o keychain: a assinatura deriva do certificado e não do conteúdo, então o app trocado continua sendo "o mesmo app" para o sistema. Conferido depois da troca: `Authority=Wisp Dev`.
+- **O caminho vetorial do Terminal é o teste mais duro do `destruir`**, e apareceu por acidente — a partição de assets estava ausente numa das rodadas. Vale rodar de propósito: `rm -rf firmware/build` antes das trocas.
+
+---
+
 ## Notas de execução
 
 **A ordem tem uma dependência real:** a Task 3 não tem como ser testada sem a Task 1 (não há campo no payload) nem sem a Task 2 (não há `ui_personagem`). As Tasks 1 e 2 são independentes entre si e testáveis isoladamente.
