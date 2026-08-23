@@ -79,6 +79,14 @@ void ui_update(const wisp_data_t *d);
 void ui_swipe(int direction);
 
 /* Converts the JSON "st" field into the enum. Unknown -> WISP_IDLE. */
+/* Troca o personagem desenhado, reconstruindo os objetos da tela.
+ *
+ * Toma o mutex do LVGL sozinha — chamável de qualquer task. Nome nulo, vazio,
+ * desconhecido ou igual ao ativo não faz nada, e é por isso que quem chama pode
+ * chamar a cada payload sem se perguntar se mudou: a pergunta é respondida aqui,
+ * num lugar só. Dois lugares decidindo isso é como se cria discordância. */
+void ui_personagem(const char *nome);
+
 wisp_state_t ui_state_from_text(const char *s);
 
 #ifdef __cplusplus

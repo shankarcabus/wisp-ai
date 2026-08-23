@@ -291,6 +291,37 @@ static void aplicar_layout(int total)
     }
 }
 
+void ui_personagem(const char *nome)
+{
+    if (!nome || !*nome) return;
+
+    const personagem_t *novo = mascote_por_nome(nome);
+    if (novo == mascote_ativo()) return;
+
+    bsp_display_lock(-1);
+
+    /* A ordem importa: destruir TODOS antes de trocar o ativo, porque é o
+     * personagem ANTIGO que sabe como desfazer o que ele fez. */
+    for (int i = 0; i < WISP_MAX_SESSIONS; i++)
+        if (mascote_ativo()->destruir) mascote_ativo()->destruir(&g_m[i]);
+
+    mascote_escolher(novo);
+
+    for (int i = 0; i < WISP_MAX_SESSIONS; i++)
+        novo->criar(g_telas[0], &g_m[i]);
+
+    /* Os rótulos NÃO são recriados: pertencem ao layout e sobreviveram à troca.
+     * O que muda é aparecerem ou não, e disso quem cuida é aplicar_layout(),
+     * pela propriedade `rotulos` do personagem.
+     *
+     * g_qtd = -1 é o idioma que este arquivo já usa para "reaplique o layout na
+     * próxima atualização" — ver o bloco de repouso em ui_update(). */
+    g_qtd = -1;
+
+    bsp_display_unlock();
+    ESP_LOGI(TAG, "personagem trocado para %s", novo->nome);
+}
+
 wisp_state_t ui_state_from_text(const char *s)
 {
     if (!s) return WISP_IDLE;

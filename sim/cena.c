@@ -175,6 +175,7 @@ void cena_ajuda(void)
     printf("comandos: n <1-4> | s <estado> [i] | todos <estado> | rest | wake\n"
            "          tile <0|1> | bat <pct|-1> | lim | nolim\n"
            "          shot <arquivo.bmp> | sprite <pasta> | quit | ?\n"
+           "          char <terminal|bytelo> | heap\n"
            "personagem: escolhido no boot — WISP_MASCOT=bytelo ./sim/build/wisp-sim\n"
            "estados : idle working tool asking waiting done error offline\n");
 }
@@ -218,6 +219,21 @@ void cena_comando(const char *linha)
     } else if (!strcmp(cmd, "tile")) {
         ui_swipe(atoi(arg) == 1 ? +1 : -1);
         return;                       /* ui_swipe já desenha */
+    } else if (!strcmp(cmd, "char")) {
+        /* Só é seguro porque `destruir` passou a existir. Na implementação
+         * anterior este comando foi recusado exatamente por isso: reconstruir a
+         * tela deixava os objetos compartilhados do Terminal apontando para
+         * memória liberada. */
+        ui_personagem(arg);
+        ui_update(&d);
+        return;
+    } else if (!strcmp(cmd, "heap")) {
+        lv_mem_monitor_t mon;
+        lv_mem_monitor(&mon);
+        printf("I (sim) heap do LVGL: %u usados de %u, frag %u%%\n",
+               (unsigned) (mon.total_size - mon.free_size),
+               (unsigned) mon.total_size, (unsigned) mon.frag_pct);
+        return;
     } else if (!strcmp(cmd, "sprite")) {
         exportar_sprite(arg);
         return;

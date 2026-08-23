@@ -583,6 +583,21 @@ static void bytelo_dispor(mascote_t *m, int16_t d, int16_t x, int16_t y,
     geometria(p, CARA(d));
 }
 
+/* A raiz leva consigo corpo, relevo, olhos, cruzes, sobrancelhas e boca, que são
+ * todos filhos dela. O adorno NÃO: ele é irmão, de propósito, porque filho que
+ * sai da caixa do pai é recortado. Irmão não morre por herança. */
+static void bytelo_destruir(mascote_t *m)
+{
+    bytelo_t *p = m->interno;
+    if (!p) return;
+
+    if (p->prop) lv_obj_delete(p->prop);
+    if (p->raiz) lv_obj_delete(p->raiz);
+
+    lv_free(p);
+    m->interno = NULL;
+}
+
 const personagem_t MASCOTE_BYTELO = {
     .nome       = "bytelo",
     /* Não usa a partição `storage`: a cara é desenhada, e os adornos que virão
@@ -594,4 +609,5 @@ const personagem_t MASCOTE_BYTELO = {
     .criar      = bytelo_criar,
     .animar     = bytelo_animar,
     .dispor     = bytelo_dispor,
+    .destruir   = bytelo_destruir,
 };

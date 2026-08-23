@@ -711,6 +711,49 @@ static void terminal_criar(lv_obj_t *pai, mascote_t *m)
     T->ang = -(float) M_PI / 2;
 }
 
+/* Apaga os objetos de nível superior. Tudo o que é filho deles morre por
+ * herança: moldura, topo, tela, luz, scan, olho, pupila, brilho, sobrancelha e
+ * boca são todos descendentes de `corpo`. */
+static void terminal_destruir(mascote_t *m)
+{
+    /* A contagem vem ANTES da saída antecipada: um mascote cujo criar() falhou
+     * em alocar tem `interno` nulo e nada para apagar, mas ainda conta como um
+     * dos que saíram de cena. Contar depois deixaria o contador travado, e as
+     * interrogações nunca seriam apagadas. */
+    static int vivos = 0;
+    if (vivos == 0) vivos = WISP_MAX_SESSIONS;
+    const bool ultimo = (--vivos == 0);
+
+    terminal_t *T = m->interno;
+    if (T) {
+        lv_obj_t *raizes[] = {T->corpo, T->braco[0], T->braco[1],
+                              T->foto, T->chama, T->wisp};
+        for (size_t k = 0; k < sizeof(raizes) / sizeof(raizes[0]); k++)
+            if (raizes[k]) lv_obj_delete(raizes[k]);
+
+        lv_free(T);
+        m->interno = NULL;
+    }
+
+    /* AS INTERROGAÇÕES.
+     *
+     * São três objetos COMPARTILHADOS por todos os mascotes, criados uma vez e
+     * guardados por um bool estático. Sem apagá-las e zerar o guarda, a próxima
+     * entrada no Terminal usa ponteiros para memória liberada — e o sintoma
+     * aparece longe da causa: lixo ou crash ao entrar em `asking`, muitas trocas
+     * depois de a troca ter "funcionado".
+     *
+     * Só o último mascote a sair as apaga, porque só ele sabe que não há mais
+     * ninguém usando. Contar é mais simples que descobrir. */
+    if (ultimo) {
+        for (int i = 0; i < QTD_INTERROG; i++) {
+            if (g_interrog[i]) lv_obj_delete(g_interrog[i]);
+            g_interrog[i] = NULL;
+        }
+        g_interrog_prontas = false;
+    }
+}
+
 const personagem_t MASCOTE_TERMINAL = {
     .nome       = "terminal",
     .usa_assets = true,
@@ -718,4 +761,5 @@ const personagem_t MASCOTE_TERMINAL = {
     .criar      = terminal_criar,
     .animar     = terminal_animar,
     .dispor     = terminal_dispor,
+    .destruir   = terminal_destruir,
 };

@@ -64,6 +64,15 @@ typedef struct {
     /* Quando o layout muda de tamanho, de posição ou de visibilidade.
      * `mostrar` false esconde tudo o que pertence ao personagem. */
     void (*dispor)(mascote_t *m, int16_t d, int16_t x, int16_t y, bool mostrar);
+
+    /* Desfaz o que criar() fez: apaga os objetos e libera o bloco `interno`.
+     * Chamada com o mutex do LVGL JÁ na mão.
+     *
+     * Cuidado com o que NÃO morre por herança: objeto criado como IRMÃO da raiz
+     * do personagem — a chama do Terminal, o adorno do Bytelo — tem de ser
+     * apagado à mão, e é a mesma armadilha que os `dispor` dos dois já
+     * documentam. */
+    void (*destruir)(mascote_t *m);
 } personagem_t;
 
 /* O registro. Índice 0 é o padrão. */
