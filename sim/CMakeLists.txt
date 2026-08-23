@@ -39,6 +39,9 @@ target_link_libraries(lvgl PUBLIC SDL2::SDL2)
 
 add_executable(wisp-sim
     main.c
+    cena.c
+    captura.c
+    relogio.c
     shim/esp_mmap_assets.c
     shim/esp_lv_decoder.c
     ../firmware/main/ui.c          # sem modificação nenhuma

@@ -6,13 +6,18 @@
  * NÃO PROVA CUSTO DE RENDER. O Mac tem CPU e RAM de sobra e nenhuma das
  * restrições da placa existe aqui. Isto serve para ver layout, expressão e
  * composição; número de FPS e RAM se medem na placa. */
+#include <poll.h>
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
+#include <unistd.h>
 
 #include <SDL2/SDL.h>
 
+#include "cena.h"
+#include "relogio.h"
 #include "lvgl.h"
 #include "ui.h"
 
@@ -32,8 +37,35 @@ void bsp_display_unlock(void)
     pthread_mutex_unlock(&g_lvgl);
 }
 
-int main(void)
+/* Display de mentira para o modo headless: o LVGL desenha, ninguém mostra.
+ *
+ * A captura por lv_snapshot não lê deste buffer — ela redesenha a árvore num
+ * buffer próprio. Este existe só porque o LVGL exige um display para ter tela
+ * ativa, timers de refresh e contexto de desenho. */
+static void flush_nada(lv_display_t *disp, const lv_area_t *area, uint8_t *px)
 {
+    (void) area; (void) px;
+    lv_display_flush_ready(disp);
+}
+
+static lv_display_t *display_headless(void)
+{
+    /* PARTIAL com um buffer de dez linhas: é o mesmo modo de render da placa
+     * (ui.c documenta que rodamos PARTIAL), então o caminho de desenho
+     * exercitado aqui é o mesmo. */
+    static uint8_t buf[480 * 10 * 2];
+    lv_display_t *d = lv_display_create(480, 480);
+    lv_display_set_buffers(d, buf, NULL, sizeof(buf), LV_DISPLAY_RENDER_MODE_PARTIAL);
+    lv_display_set_flush_cb(d, flush_nada);
+    return d;
+}
+
+int main(int argc, char **argv)
+{
+    bool headless = false;
+    for (int i = 1; i < argc; i++)
+        if (!strcmp(argv[i], "--headless")) headless = true;
+
     /* Linha a linha, sempre. Com stdout redirecionado para arquivo ou pipe o
      * libc passa a bufferizar por bloco, e aí o log — que existe para ser
      * comparado com o monitor serial da placa — só aparece quando o processo
@@ -46,27 +78,70 @@ int main(void)
     pthread_mutex_init(&g_lvgl, &attr);
 
     lv_init();
-    lv_tick_set_cb(SDL_GetTicks);
+    lv_tick_set_cb(relogio_agora);
     lv_delay_set_cb(SDL_Delay);
 
-    lv_display_t *disp = lv_sdl_window_create(480, 480);
-    lv_sdl_window_set_title(disp, "Wisp — simulador da placa");
-    lv_sdl_mouse_create();
+    /* Headless é o modo da FOLHA DE CONTATO, e existe por determinismo.
+     *
+     * Com janela SDL, duas execuções da mesma sequência de comandos não davam
+     * os mesmos bytes: medido, a primeira execução após um build diferia das
+     * seguintes, que eram idênticas entre si. A causa está nos eventos que o
+     * sistema entrega ao lançar uma janela, não no relógio — o tick virtual no
+     * instante da captura era igual nos dois casos. Sem janela, sem eventos,
+     * sem indeterminação.
+     *
+     * A janela continua sendo o modo padrão: é para olhar. */
+    lv_display_t *disp = NULL;
+    if (headless) {
+        disp = display_headless();
+        printf("I (sim) headless: sem janela, captura determinística\n");
+    } else {
+        disp = lv_sdl_window_create(480, 480);
+        lv_sdl_window_set_title(disp, "Wisp — simulador da placa");
+    }
+    (void) disp;
+    /* SEM indev de mouse, de propósito.
+     *
+     * lv_sdl_mouse_create() alimenta o LVGL com a posição do mouse REAL da
+     * máquina. O tileview é rolável, então o ponteiro passando por cima da
+     * janela mexe na posição de scroll — e aí duas execuções da mesma sequência
+     * de comandos dão capturas diferentes. Foi exatamente o que aconteceu:
+     * 25063 pixels de diferença no painel de limites, com o mascote e o painel
+     * idênticos, o que denuncia deslocamento de scroll e não animação.
+     *
+     * O simulador é dirigido por stdin; o comando `tile` cobre o que o dedo
+     * faria. Reabilitar o mouse aqui reintroduz a indeterminação e invalida a
+     * folha de contato. */
 
     /* ui.h: ui_create() precisa ser chamada com o mutex do LVGL na mão. */
     bsp_display_lock(0);
     ui_create();
     bsp_display_unlock();
 
-    printf("I (sim) janela aberta; ctrl-c para sair\n");
+    if (!headless) printf("I (sim) janela aberta; ctrl-c para sair\n");
+    cena_init();
+    cena_ajuda();
+    /* Sem o lock na mão: ui_update() pega o mutex por conta própria (ui.h), e
+     * com um mutex não recursivo isto seria travamento na primeira linha. */
+    ui_update(cena_atual());
 
     for (;;) {
         bsp_display_lock(0);
-        uint32_t espera = lv_timer_handler();
+        relogio_avancar();
+        lv_timer_handler();
         bsp_display_unlock();
-        if (espera < 1)  espera = 1;
-        if (espera > 20) espera = 20;
-        SDL_Delay(espera);
+
+        /* stdin sem bloquear: se houver linha, aplica. */
+        struct pollfd p = {.fd = 0, .events = POLLIN};
+        if (poll(&p, 1, 0) > 0 && (p.revents & POLLIN)) {
+            char linha[128];
+            if (fgets(linha, sizeof(linha), stdin)) cena_comando(linha);
+        }
+
+        /* Ritmo de parede fixo, e não o que lv_timer_handler sugere: o tempo
+         * que o LVGL vê é o relógio virtual, então quem manda no passo é ele.
+         * Um passo por iteração mantém a animação na velocidade certa. */
+        SDL_Delay(RELOGIO_PASSO_MS);
     }
     return 0;
 }

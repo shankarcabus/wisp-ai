@@ -53,3 +53,52 @@ build do firmware — o simulador compila **aquela** cópia, e a configuração
 imprime `LVGL: cópia local do firmware (paridade exata)`. Num clone limpo essa
 pasta não existe (é gitignored, 250MB) e o CMake busca a v9.5.0 do upstream:
 mesma versão, origem diferente.
+
+## Captura e a folha de contato
+
+```bash
+./sim/folha.sh                 # 27 imagens em sim/shots/
+./sim/folha.sh sim/shots-antes # ou onde você quiser
+```
+
+Cada estado, em cada contagem de sessões, mais repouso e o painel de limites.
+Serve para olhar, e serve como **regressão byte a byte**: gere antes de mexer no
+personagem, gere depois, compare com `cmp`. Igual significa que nada mudou.
+
+Para isso funcionar a captura tem de ser determinística, e três decisões
+existem só por causa disso:
+
+- **Relógio virtual** (`sim/relogio.c`). O mascote respira contra
+  `lv_tick_get()`. Ligado ao relógio do sistema, duas execuções caem em fases
+  diferentes da respiração. Aqui o tempo é contado em passos de 16ms, não
+  medido.
+- **Sem indev de mouse.** O mouse real da máquina passando sobre a janela mexe
+  no scroll do tileview. Medido: 25 mil pixels de diferença no painel de
+  limites por causa disso.
+- **`--headless`.** Mesmo sem mouse, com janela SDL a primeira execução após um
+  build difere das seguintes — são os eventos que o sistema entrega ao lançar
+  uma janela. Sem janela, a mesma sequência dá os mesmos bytes, sempre. É o
+  modo que a `folha.sh` usa.
+
+Com os três, 27 capturas × 2 execuções = 0 diferenças.
+
+## Comandos
+
+Um por linha, em stdin.
+
+| comando | efeito |
+|---|---|
+| `n <1-4>` | número de sessões. **Não muda a quantidade de mascotes** — a placa desenha um só (`ui.c:1319`); o que muda é a lista sob o rótulo |
+| `s <estado> [i]` | estado da sessão `i` (padrão 0) |
+| `todos <estado>` | o mesmo estado em todas |
+| `rest` / `wake` | entra e sai do repouso. `rest` esvazia a lista, porque o repouso exige lista vazia além do silêncio (`ui.c:1313`) |
+| `tile <0\|1>` | mascote ou painel de limites |
+| `bat <pct\|-1>` | bateria; -1 = desconhecida |
+| `lim` / `nolim` | limites presentes ou indisponíveis |
+| `shot <arquivo.bmp>` | captura. Converta com `sips -s format png x.bmp --out x.png` |
+| `quit` | encerra. É o que torna a captura em lote síncrona |
+| `?` | ajuda |
+
+O log do LVGL fica ligado em nível de aviso, de propósito: foi ele que
+explicou a primeira falha de captura (`lv_draw_buf_create_ex: No memory`) em
+vez de deixar adivinhar.
