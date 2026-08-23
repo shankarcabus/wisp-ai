@@ -15,3 +15,12 @@
 #include <stdbool.h>
 
 bool captura_bmp(const char *caminho);
+
+/* Grava um recorte da tela em TIFF de 32 bits COM ALFA, para virar sprite do
+ * app do Mac.
+ *
+ * TIFF e não PNG pelo mesmo motivo que a captura normal é BMP: o LVGL não tem
+ * codificador, e um TIFF sem compressão são um cabeçalho e os bytes crus. O
+ * `sips`, que já vem no macOS, converte para PNG preservando o alfa. Um PNG
+ * escrito à mão exigiria CRC32 e deflate por sessenta linhas, sem ganho. */
+bool captura_tiff(const char *caminho, int x0, int y0, int w, int h);

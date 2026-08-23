@@ -3,6 +3,7 @@
 #include <SDL2/SDL.h>
 
 #include "captura.h"
+#include "mascote.h"
 #include "relogio.h"
 #include "lvgl.h"
 
@@ -82,11 +83,98 @@ void cena_init(void)
     snprintf(d.icon, sizeof(d.icon), "cloudsun");
 }
 
+/* ————————————————————————————————————————————————
+ *  Exportar o personagem como sprite para o app do Mac
+ * ————————————————————————————————————————————————
+ * O app já sabe carregar conjuntos de `~/.wisp/mascots/<nome>/`: oito PNG, um
+ * por estado, fundo transparente, mesmo enquadramento nos oito. Isto produz
+ * exatamente isso a partir do personagem que está desenhado aqui — ou seja, do
+ * mesmo código que roda na placa. Um personagem, duas superfícies.
+ *
+ * ENQUADRAMENTO
+ * -------------
+ * Recorte FIXO e igual nos oito, e não uma caixa ajustada ao conteúdo de cada
+ * estado. É o requisito que o MASCOTS.md chama de "o item que arruína este
+ * trabalho mais frequentemente": se o personagem sai maior num arquivo e mais à
+ * esquerda em outro, ele PULA ao trocar de estado, e o efeito lê como bug.
+ *
+ * Os números vêm da geometria da tela: mascote centrado em (240,240) e cara de
+ * 220px, então o pé dela está em 350. Recorte de 340 com a base 34px abaixo do
+ * pé dá os 10% de margem que o MASCOTS.md pede, e 340 cobre os adornos, que
+ * chegam a 165px do centro. Se a proporção da cara mudar, estes números saem de
+ * lugar — e o jeito de descobrir é olhar o resultado.
+ */
+#define SPRITE_LADO 340
+#define SPRITE_X0   ((480 - SPRITE_LADO) / 2)
+#define SPRITE_Y0   (384 - SPRITE_LADO)
+
+static const char *ESTADOS_SPRITE[WISP_COUNT] = {
+    [WISP_IDLE] = "idle",       [WISP_WORKING] = "working",
+    [WISP_TOOL] = "tool",       [WISP_ASKING]  = "asking",
+    [WISP_WAITING] = "waiting", [WISP_DONE]    = "done",
+    [WISP_ERROR] = "error",     [WISP_OFFLINE] = "offline",
+};
+
+/* Deixa transparente (ou devolve) o fundo da tela, do tileview e dos dois
+ * tiles. São eles que o ui_create() pinta de preto opaco, e sem isso o sprite
+ * sai com um retângulo preto em volta do personagem.
+ *
+ * O caminho é pela árvore do LVGL, e não por uma função nova no ui.c: o
+ * firmware não deve crescer uma API para servir uma ferramenta de bancada. */
+static void fundo_transparente(bool transparente)
+{
+    const lv_opa_t opa = transparente ? LV_OPA_TRANSP : LV_OPA_COVER;
+    lv_obj_t *tela = lv_screen_active();
+    lv_obj_set_style_bg_opa(tela, opa, 0);
+    for (uint32_t i = 0; i < lv_obj_get_child_count(tela); i++) {
+        lv_obj_t *tv = lv_obj_get_child(tela, i);
+        lv_obj_set_style_bg_opa(tv, opa, 0);
+        for (uint32_t k = 0; k < lv_obj_get_child_count(tv); k++)
+            lv_obj_set_style_bg_opa(lv_obj_get_child(tv, k), opa, 0);
+    }
+}
+
+static void exportar_sprite(const char *pasta)
+{
+    if (!pasta || !*pasta) {
+        printf("W (sim) uso: sprite <pasta>\n");
+        return;
+    }
+    if (mascote_ativo()->rotulos) {
+        printf("W (sim) o personagem \"%s\" mostra rotulos, e eles entrariam no\n"
+               "        sprite. Exportacao serve a personagem desenhado, sem texto.\n",
+               mascote_ativo()->nome);
+        return;
+    }
+
+    const int bat = d.battery_pct;
+    d.battery_pct = -1;      /* ui.c trata -1 como "sem medida": rotulo vazio */
+    fundo_transparente(true);
+
+    int ok = 0;
+    for (int e = 0; e < WISP_COUNT; e++) {
+        for (int k = 0; k < WISP_MAX_SESSIONS; k++)
+            d.sessions[k].state = (wisp_state_t) e;
+        ui_update(&d);
+        for (int k = 0; k < ASSENTAR_MAX; k++) { relogio_avancar(); lv_timer_handler(); }
+
+        char caminho[600];
+        snprintf(caminho, sizeof(caminho), "%s/%s.tiff", pasta, ESTADOS_SPRITE[e]);
+        if (captura_tiff(caminho, SPRITE_X0, SPRITE_Y0, SPRITE_LADO, SPRITE_LADO)) ok++;
+    }
+
+    fundo_transparente(false);
+    d.battery_pct = bat;
+    ui_update(&d);
+    printf("I (sim) %d/%d sprites de \"%s\" em %s\n",
+           ok, WISP_COUNT, mascote_ativo()->nome, pasta);
+}
+
 void cena_ajuda(void)
 {
     printf("comandos: n <1-4> | s <estado> [i] | todos <estado> | rest | wake\n"
            "          tile <0|1> | bat <pct|-1> | lim | nolim\n"
-           "          shot <arquivo.bmp> | quit | ?\n"
+           "          shot <arquivo.bmp> | sprite <pasta> | quit | ?\n"
            "personagem: escolhido no boot — WISP_MASCOT=bytelo ./sim/build/wisp-sim\n"
            "estados : idle working tool asking waiting done error offline\n");
 }
@@ -130,6 +218,9 @@ void cena_comando(const char *linha)
     } else if (!strcmp(cmd, "tile")) {
         ui_swipe(atoi(arg) == 1 ? +1 : -1);
         return;                       /* ui_swipe já desenha */
+    } else if (!strcmp(cmd, "sprite")) {
+        exportar_sprite(arg);
+        return;
     } else if (!strcmp(cmd, "quit")) {
         /* Existe para a captura em lote ser SÍNCRONA. Sem isto o simulador
          * roda para sempre — o que é certo no modo interativo — e um roteiro

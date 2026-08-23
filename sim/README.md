@@ -119,3 +119,29 @@ Um por linha, em stdin.
 O log do LVGL fica ligado em nível de aviso, de propósito: foi ele que
 explicou a primeira falha de captura (`lv_draw_buf_create_ex: No memory`) em
 vez de deixar adivinhar.
+
+## Exportar o personagem para o app do Mac
+
+```bash
+WISP_MASCOT=bytelo ./sim/sprites.sh          # para ~/.wisp/mascots/bytelo/
+WISP_MASCOT=bytelo ./sim/sprites.sh /tmp/x   # para olhar antes
+```
+
+Oito PNG com alfa, um por estado, no formato que o `mac/Sources/Sprites.swift`
+já sabe ler — o seletor "Character" do painel passa a listar o personagem **sem
+nenhuma mudança no app**. É a unificação pelo caminho mais curto: o mesmo código
+que desenha na placa passa a desenhar o mascote da barra de menus.
+
+O enquadramento é um recorte **fixo** de 340×340, igual nos oito, e não uma
+caixa ajustada ao conteúdo de cada estado. É o requisito que o `MASCOTS.md`
+chama de o que mais arruína esse trabalho: personagem maior num arquivo e mais à
+esquerda em outro *pula* na troca de estado, e o efeito lê como bug.
+
+Dois detalhes que a exportação resolve sozinha: o fundo preto opaco que o
+`ui_create()` pinta no root, no tileview e nos dois tiles fica transparente
+durante a captura e volta depois; e a bateria sai com `battery_pct = -1`, que o
+`ui.c` já trata como "sem medida, rótulo vazio".
+
+Só serve a personagem **desenhado**, sem rótulos — o comando recusa quem tem
+`rotulos = true`, porque o texto entraria no sprite. O Terminal não precisa
+disso: a arte dele já existe em `firmware/assets/`.
