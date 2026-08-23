@@ -366,11 +366,14 @@ class State:
         snap["day"] = time.strftime("%a %d %b")
         snap["rest"] = REST_S
 
-        # O personagem escolhido no painel. Só vai quando há escolha: campo
-        # ausente significa "placa, mantenha o que você tem", e é o caminho de
-        # toda instalação nova e de todo bridge anterior a isto.
-        if (mc := config.mascot()):
-            snap["mascot"] = mc
+        # Os ajustes de interface. `mascot` continua com o nome que tem porque o
+        # firmware já gravado o lê, e quebrar isso trocaria um problema resolvido
+        # por um em aberto. A seção `board` vai INTEIRA, sem renomear nada:
+        # chave ausente significa "placa, mantenha o que você tem".
+        _ui = config.ui()
+        if _ui["character"]:
+            snap["mascot"] = _ui["character"]
+        snap["ui"] = _ui["board"]
 
         if (wx := WEATHER.read()):
             snap["wx"] = wx

@@ -72,38 +72,7 @@ enum Sprites {
             UserDefaults.standard.set(newValue, forKey: "mascot")
             cache.removeAll()
             complete.removeAll()
-            publish(newValue)
-        }
-    }
-
-    /// The file the bridge reads to know which character the board should draw.
-    ///
-    /// UserDefaults stays the app's store; this file is the PUBLISHED choice.
-    /// A file, rather than the bridge reading UserDefaults: `defaults read`
-    /// from Python goes through cfprefsd, and a stale read there is the kind of
-    /// bug that costs an afternoon without announcing itself. This one you read
-    /// with `cat`.
-    ///
-    /// A var so the probe in the plan can point it at /tmp — a test that writes
-    /// into the running user's ~/.wisp changes their real configuration.
-    static var published = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".wisp/mascot")
-
-    /// Writes by temp+rename, so a reader never sees half a name. The bridge
-    /// reads this on every /state, and /state is served about once a second.
-    static func publish(_ name: String) {
-        let dir = published.deletingLastPathComponent()
-        let tmp = published.appendingPathExtension("tmp")
-        do {
-            try FileManager.default.createDirectory(at: dir,
-                                                    withIntermediateDirectories: true)
-            try (name + "\n").write(to: tmp, atomically: false, encoding: .utf8)
-            _ = try FileManager.default.replaceItemAt(published, withItemAt: tmp)
-        } catch {
-            // Failing here must not take the Mac's own character change down
-            // with it: the menu bar mascot has already changed, and what is
-            // lost is only the board following along.
-            NSLog("wisp: could not publish the character: \(error.localizedDescription)")
+            Ajustes.publicar()
         }
     }
 

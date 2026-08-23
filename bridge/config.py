@@ -38,6 +38,25 @@ FILE = FOLDER / "config.json"
 # leitura mora aqui porque a pasta é deste módulo.
 MASCOT_FILE = FOLDER / "mascot"
 
+# Os ajustes de interface publicados pelo painel do Mac.
+#
+# Substitui o MASCOT_FILE de uma linha, que ficou pequeno na primeira vez que se
+# quis ajustar mais de uma coisa. O antigo continua sendo LIDO, como migração:
+# ver ui() abaixo.
+UI_FILE = FOLDER / "ui.json"
+
+# Os padrões, e o contrato do formato num lugar só.
+#
+# Chaves e valores em inglês, como as do config.json — o que é em português é o
+# texto que aparece na tela, não a configuração. Um arquivo em que ninguém sabe
+# qual idioma esperar é um arquivo que se erra ao editar.
+UI_DEFAULTS = {
+    "character": "",
+    "board": {"size": "medium", "action_label": True,
+              "project_label": True, "language": "en"},
+    "mac": {"size": "medium"},
+}
+
 DEFAULTS = {
     "port": 4666,
 
@@ -151,6 +170,34 @@ def mascot() -> str:
         return MASCOT_FILE.read_text().strip()
     except OSError:
         return ""
+
+
+def ui() -> dict:
+    """
+    Os ajustes, SEMPRE com todas as chaves preenchidas.
+
+    Quem consome não precisa perguntar se a chave existe, e é por isso que o
+    merge é aqui: espalhar `.get(chave, padrao)` por três arquivos é como se cria
+    três padrões diferentes para a mesma coisa.
+
+    A MIGRAÇÃO NÃO TEM PASSO
+    ------------------------
+    Sem o ui.json, tenta o `mascot` de uma linha e usa só o personagem dele. O
+    app escreve o ui.json na primeira mudança que alguém fizer; ninguém roda nada
+    e nada se perde. Com os dois presentes, o ui.json ganha — ele é o novo.
+
+    JSON inválido devolve o padrão. Um arquivo que alguém editou à mão e errou uma
+    vírgula não pode derrubar o bridge: o custo do erro é a configuração ignorada,
+    e isso aparece na tela.
+    """
+    cfg = _merge(UI_DEFAULTS, {})
+    try:
+        cfg = _merge(cfg, json.loads(UI_FILE.read_text()))
+    except (OSError, json.JSONDecodeError):
+        antigo = mascot()
+        if antigo:
+            cfg["character"] = antigo
+    return cfg
 
 
 if __name__ == "__main__":
