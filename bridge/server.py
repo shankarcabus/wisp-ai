@@ -366,6 +366,12 @@ class State:
         snap["day"] = time.strftime("%a %d %b")
         snap["rest"] = REST_S
 
+        # O personagem escolhido no painel. Só vai quando há escolha: campo
+        # ausente significa "placa, mantenha o que você tem", e é o caminho de
+        # toda instalação nova e de todo bridge anterior a isto.
+        if (mc := config.mascot()):
+            snap["mascot"] = mc
+
         if (wx := WEATHER.read()):
             snap["wx"] = wx
 

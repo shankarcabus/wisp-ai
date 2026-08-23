@@ -27,6 +27,17 @@ from pathlib import Path
 FOLDER = Path.home() / ".wisp"
 FILE = FOLDER / "config.json"
 
+# A escolha de personagem publicada pelo painel do Mac.
+#
+# ARQUIVO PRÓPRIO, E NÃO UMA CHAVE NO config.json
+# -----------------------------------------------
+# Quem escreve é o app, em Swift. Para publicar um escalar no config.json ele
+# teria de reimplementar o merge de defaults, a geração de token e o 0600 deste
+# módulo — muito código para pouca coisa — e dois escritores no mesmo arquivo
+# convidam a corrida. Uma linha, gravada por temp+rename do lado do app, e a
+# leitura mora aqui porque a pasta é deste módulo.
+MASCOT_FILE = FOLDER / "mascot"
+
 DEFAULTS = {
     "port": 4666,
 
@@ -125,6 +136,21 @@ def write(cfg: dict) -> None:
     tmp.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
     os.chmod(tmp, 0o600)   # it holds the token
     tmp.replace(FILE)
+
+
+def mascot() -> str:
+    """
+    O personagem que o painel publicou, ou "" quando ninguém escolheu.
+
+    Vazio é um resultado legítimo e frequente: instalação nova, ou alguém que
+    nunca abriu o seletor. Quem consome trata ausência como "não mande o campo",
+    e a placa trata campo ausente como "mantenha o que tem" — nem instalação
+    nova nem bridge velho devem derrubar a escolha que já está na NVS.
+    """
+    try:
+        return MASCOT_FILE.read_text().strip()
+    except OSError:
+        return ""
 
 
 if __name__ == "__main__":
