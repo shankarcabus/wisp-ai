@@ -54,7 +54,12 @@ UI_DEFAULTS = {
     "character": "",
     "board": {"size": "medium", "action_label": True,
               "project_label": True, "language": "en"},
-    "mac": {"size": "medium"},
+    # O som é da seção `mac` porque só o Mac toca: a placa C6 não tem áudio
+    # utilizável — sem BOARD_HAS_SOUND, sem pinos I2S mapeados, e o amplificador
+    # atrás de um expansor que ninguém dirige. O padrão liga nos dois estados que
+    # significam "o Claude está te esperando".
+    "mac": {"size": "medium",
+            "sound": {"enabled": True, "states": ["asking", "waiting"]}},
 }
 
 DEFAULTS = {

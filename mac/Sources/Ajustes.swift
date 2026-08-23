@@ -34,6 +34,8 @@ enum Ajustes {
     static let kBoardProject = "ui.board.project_label"
     static let kBoardLang    = "ui.board.language"
     static let kMacSize      = "ui.mac.size"
+    static let kSoundOn      = "ui.mac.sound.enabled"
+    static let kSoundStates  = "ui.mac.sound.states"
 
     static var boardSize: Tamanho {
         get { Tamanho(rawValue: UserDefaults.standard.string(forKey: kBoardSize) ?? "") ?? .medium }
@@ -54,6 +56,26 @@ enum Ajustes {
     static var boardLanguage: String {
         get { UserDefaults.standard.string(forKey: kBoardLang) ?? "en" }
         set { UserDefaults.standard.set(newValue, forKey: kBoardLang); publicar() }
+    }
+
+    static var soundEnabled: Bool {
+        get { UserDefaults.standard.object(forKey: kSoundOn) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: kSoundOn); publicar() }
+    }
+
+    /// Em quais estados tocar. Padrão nos dois que significam "o Claude está te
+    /// esperando" — os outros seis viram ruído, e ruído se desliga uma vez e
+    /// nunca mais se liga.
+    static var soundStates: Set<String> {
+        get {
+            guard let a = UserDefaults.standard.array(forKey: kSoundStates) as? [String]
+            else { return ["asking", "waiting"] }
+            return Set(a)
+        }
+        set {
+            UserDefaults.standard.set(newValue.sorted(), forKey: kSoundStates)
+            publicar()
+        }
     }
 
     /// Onde o JSON é publicado.
@@ -77,7 +99,9 @@ enum Ajustes {
                       "action_label": boardAction,
                       "project_label": boardProject,
                       "language": boardLanguage],
-            "mac": ["size": macSize.rawValue],
+            "mac": ["size": macSize.rawValue,
+                    "sound": ["enabled": soundEnabled,
+                              "states": soundStates.sorted()]],
         ]
         let dir = arquivo.deletingLastPathComponent()
         let tmp = arquivo.appendingPathExtension("tmp")

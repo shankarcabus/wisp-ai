@@ -135,6 +135,45 @@ struct Galeria: View {
     }
 }
 
+/// Em quais estados tocar som.
+///
+/// Oito caixas em duas fileiras de quatro. Rótulo pelo nome CRU do estado
+/// (`asking`, `waiting`) e não pelo texto amigável ("needs you"): oito frases em
+/// 300px não caberiam, e aqui o que se quer é marcar, não ler.
+///
+/// Recebe o conjunto por Binding porque a fonte da verdade é o `Ajustes`, e um
+/// @State local por caixa seria oito lugares guardando a mesma coisa.
+struct CaixasDeSom: View {
+    @Binding var estados: Set<String>
+
+    private let linhas: [[MascotState]] = [
+        [.idle, .working, .tool, .asking],
+        [.waiting, .done, .error, .offline],
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(linhas.indices, id: \.self) { i in
+                HStack(spacing: 8) {
+                    ForEach(linhas[i], id: \.self) { s in
+                        Toggle(isOn: Binding(
+                            get: { estados.contains(s.rawValue) },
+                            set: { on in
+                                if on { estados.insert(s.rawValue) }
+                                else  { estados.remove(s.rawValue) }
+                            }
+                        )) {
+                            Text(s.rawValue).font(.system(size: 10))
+                        }
+                        .toggleStyle(.checkbox)
+                        .frame(width: 62, alignment: .leading)
+                    }
+                }
+            }
+        }
+    }
+}
+
 struct Panel: View {
     @ObservedObject var bridge: Bridge
     /// Off only for the documentation shots. The footer is AppKit-backed
@@ -150,6 +189,8 @@ struct Panel: View {
     @State private var idioma     = Ajustes.boardLanguage
     @State private var tamPlaca   = Ajustes.boardSize
     @State private var tamMac     = Ajustes.macSize
+    @State private var somOn      = Ajustes.soundEnabled
+    @State private var somEstados = Ajustes.soundStates
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -399,6 +440,20 @@ struct Panel: View {
             }
             .font(.system(size: 11))
             .onChange(of: tamMac) { _, v in Ajustes.macSize = v }
+
+            Toggle(isOn: $somOn) {
+                Text("Sound when the state changes").font(.system(size: 11))
+            }
+            .toggleStyle(.checkbox)
+            .onChange(of: somOn) { _, v in Ajustes.soundEnabled = v }
+            .help("On the Mac. The C6 board has no usable audio — no I2S pins "
+                  + "mapped and the amplifier behind an expander nobody drives.")
+
+            if somOn {
+                CaixasDeSom(estados: $somEstados)
+                    .padding(.leading, 18)
+                    .onChange(of: somEstados) { _, v in Ajustes.soundStates = v }
+            }
 
             Divider()
 

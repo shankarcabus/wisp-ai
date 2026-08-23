@@ -87,6 +87,14 @@ this table is that none of these announce themselves.
   binary starts with the `MMAP` magic the component uses the checksum from the
   header and ignores the config. A constant there validates nothing and goes
   stale the moment the art changes — it reads like verification and isn't.
+- **There is no sound on the C6, and that is the board.** Not an omission in this
+  firmware: the C6 declares no `BOARD_HAS_SOUND`, no I2S pins are mapped in
+  either project on this bench, and its power amp sits behind a TCA9554 that
+  nothing drives — the sibling project's own C6 sound file is three empty
+  functions with the comment "no buzzer wired". The S3 is the one with the
+  ES8311, at 0x18, with MCLK 42 / BCLK 9 / WS 45 / DOUT 8 / DIN 10 and the amp on
+  GPIO 46. Sound lives on the Mac (`mac/Sources/Som.swift`); putting it on this
+  board starts with finding its pins, which is measurement, not porting.
 - **The label shows the state, not the tool, when the language is Portuguese.**
   Deliberate. The detail field comes from the bridge and is not translatable —
   tool names like `Bash` and English phrases like `approve plan`. A label reading

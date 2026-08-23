@@ -359,7 +359,17 @@ final class Bridge: ObservableObject {
         req.timeoutInterval = 4
         do {
             let (raw, _) = try await URLSession.shared.data(for: req)
+            let antes = data?.dominantState
             data = try JSONDecoder().decode(AppState.self, from: raw)
+            /* O som toca na TRANSIÇÃO do estado dominante, e o gancho fica aqui
+             * e não num `didSet` de `data` por isso: `fixture()` também escreve
+             * em `data`, e a ferramenta de documentação não deve fazer barulho.
+             *
+             * Dominante, e não por sessão: sessões piscando entre `tool` e
+             * `working` tocariam uma metralhadora. */
+            if let agora = data?.dominantState, agora != antes {
+                Som.aoEntrar(agora)
+            }
             pollError = nil
             await maybeFetchLimits(done: data?.tasks_done,
                                    expired: data?.limits.contains { $0.expired } ?? false)

@@ -45,7 +45,8 @@ def main():
         "character": "",
         "board": {"size": "medium", "action_label": True,
                   "project_label": True, "language": "en"},
-        "mac": {"size": "medium"},
+        "mac": {"size": "medium",
+                "sound": {"enabled": True, "states": ["asking", "waiting"]}},
     }
 
     print("config.ui()")
@@ -63,13 +64,15 @@ def main():
         "character": "terminal",
         "board": {"size": "large", "action_label": False,
                   "project_label": True, "language": "pt"},
-        "mac": {"size": "small"},
+        "mac": {"size": "small",
+                "sound": {"enabled": False, "states": ["done"]}},
     }))
     checa("ui.json completo", config.ui(), {
         "character": "terminal",
         "board": {"size": "large", "action_label": False,
                   "project_label": True, "language": "pt"},
-        "mac": {"size": "small"},
+        "mac": {"size": "small",
+                "sound": {"enabled": False, "states": ["done"]}},
     })
 
     limpa()
