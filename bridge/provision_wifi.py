@@ -101,7 +101,19 @@ def ask(port: str) -> dict:
     import config as _cfg
     token = _cfg.read()["token"]
 
-    return {"ssid": ssid, "pass": password, "host": host, "token": token}
+    # Which character the board draws. Enter takes the default: most people do
+    # not want to choose, and `terminal` is the one the documentation shows.
+    #
+    # It lives in NVS, and NVS is written whole, so changing character means
+    # running this again — WiFi password included. That friction is the price of
+    # not having a runtime channel for it; a field in the /state payload would
+    # remove it.
+    escolha = _prompt("character (terminal / pixel) [terminal]: ").strip().lower()
+    if escolha not in ("terminal", "pixel"):
+        escolha = "terminal"
+
+    return {"ssid": ssid, "pass": password, "host": host, "token": token,
+            "mascot": escolha}
 
 
 def write(port: str, data: dict) -> int:

@@ -123,7 +123,9 @@ int main(int argc, char **argv)
      *
      *     WISP_MASCOT=pixel ./sim/build/wisp-sim
      */
-    mascote_escolher(mascote_por_nome(getenv("WISP_MASCOT")));
+    const personagem_t *personagem = mascote_por_nome(getenv("WISP_MASCOT"));
+    mascote_escolher(personagem);
+    printf("I (sim) personagem: %s\n", personagem->nome);
 
     /* ui.h: ui_create() precisa ser chamada com o mutex do LVGL na mão. */
     bsp_display_lock(0);

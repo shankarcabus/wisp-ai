@@ -26,6 +26,7 @@
 #include "mdns.h"
 #include "cJSON.h"
 #include "lvgl.h"
+#include "mascote.h"
 #include "bsp/esp-bsp.h"
 #include "bsp/display.h"
 #include "bsp/touch.h"
@@ -669,6 +670,32 @@ static bool ler_credenciais(char *ssid, size_t ssid_n, char *senha, size_t senha
     return ok;
 }
 
+/* Qual personagem desenhar. Leitura PRÓPRIA, e não de carona em
+ * ler_credenciais(), por uma razão de ordem: as credenciais só são lidas dentro
+ * de iniciar_wifi(), que roda DEPOIS de ui_create() — e o personagem tem de
+ * estar escolhido antes, porque é ele quem cria os objetos da tela.
+ *
+ * Ausente, vazia ou desconhecida cai no padrão, e mascote_por_nome() avisa no
+ * log quando o nome veio errado. Trocar de personagem exige reprovisionar: a
+ * chave vive na NVS, que o flash.sh grava inteira. Um campo no payload /state
+ * tiraria essa fricção e está anotado como fora de escopo. */
+static void escolher_personagem(void)
+{
+    nvs_handle_t h;
+    char nome[16] = {0};
+    size_t n = sizeof(nome);
+
+    if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK ||
+        nvs_open(NVS_NS_LEGADO, NVS_READONLY, &h) == ESP_OK) {
+        if (nvs_get_str(h, "mascot", nome, &n) != ESP_OK) nome[0] = '\0';
+        nvs_close(h);
+    }
+
+    const personagem_t *p = mascote_por_nome(nome);
+    mascote_escolher(p);
+    ESP_LOGI(TAG, "personagem: %s", p->nome);
+}
+
 static bool iniciar_wifi(void)
 {
     char ssid[33] = {0}, senha[65] = {0};
@@ -999,6 +1026,9 @@ void app_main(void)
      *    Como ESP_OK vale 0, o sucesso converte para `false`. Testar
      *    `if (bsp_display_lock(-1))` estaria invertido. Por isso não testo.
      */
+    /* Antes de ui_create(): é o personagem que cria os objetos da tela. */
+    escolher_personagem();
+
     bsp_display_lock(-1);
     ui_create();
     bsp_display_unlock();

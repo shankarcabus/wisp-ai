@@ -22,6 +22,23 @@ cmake -S sim -B sim/build && cmake --build sim/build -j
 ./sim/build/wisp-sim
 ```
 
+### Escolhendo o personagem
+
+```bash
+WISP_MASCOT=pixel ./sim/build/wisp-sim      # o personagem novo
+./sim/build/wisp-sim                        # terminal, o padrão
+WISP_MASCOT=pixel ./sim/folha.sh sim/px     # a folha inteira, com o pixel
+```
+
+Espelha a placa, onde a escolha vem da chave `mascot` na NVS e é lida no boot
+(`main.c`, `escolher_personagem()`). Nome desconhecido cai no padrão e avisa no
+log, nos dois lados.
+
+**Não há comando para trocar em tempo de execução**, e isso é deliberado:
+reconstruir a tela deixaria os objetos compartilhados de um personagem — as
+interrogações do Terminal, criadas uma vez — apontando para memória liberada.
+Trocar de personagem é relançar.
+
 **Rode da raiz do repositório.** O simulador procura os assets convertidos em
 `firmware/build/mmap_build/assets/storage`, por caminho relativo.
 
