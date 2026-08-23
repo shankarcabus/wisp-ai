@@ -118,6 +118,8 @@ esp_err_t esp_lv_decoder_init(esp_lv_decoder_handle_t *handle);
 `sim/shim/esp_lv_decoder.c`:
 
 ```c
+#include <stddef.h>          /* NULL */
+
 #include "esp_lv_decoder.h"
 
 esp_err_t esp_lv_decoder_init(esp_lv_decoder_handle_t *handle)
@@ -333,6 +335,12 @@ void bsp_display_unlock(void)
 
 int main(void)
 {
+    /* Linha a linha, sempre. Com stdout redirecionado para arquivo ou pipe o
+     * libc passa a bufferizar por bloco, e aí o log — que existe para ser
+     * comparado com o monitor serial da placa — só aparece quando o processo
+     * morre. O simulador não morre: o laço é infinito de propósito. */
+    setvbuf(stdout, NULL, _IOLBF, 0);
+
     pthread_mutexattr_t attr;
     pthread_mutexattr_init(&attr);
     pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
