@@ -4,7 +4,7 @@ Converte os mapas ASCII de firmware/props/ em lv_image_dsc_t de RGB565A8.
 
     python3 firmware/tools/props_to_c.py
 
-Escreve firmware/main/mascote_pixel_props.c. NÃO EDITAR O .c À MÃO — rode isto.
+Escreve firmware/main/mascote_bytelo_props.c. NÃO EDITAR O .c À MÃO — rode isto.
 
 POR QUE EM TEMPO DE BUILD
 -------------------------
@@ -23,7 +23,7 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[2]
 PROPS = RAIZ / "firmware" / "props"
-SAIDA = RAIZ / "firmware" / "main" / "mascote_pixel_props.c"
+SAIDA = RAIZ / "firmware" / "main" / "mascote_bytelo_props.c"
 
 ORDEM = ["bolha", "laptop", "pergunta", "maos", "faiscas", "wifi"]
 
@@ -74,7 +74,7 @@ def main() -> None:
         "/* GERADO por firmware/tools/props_to_c.py — não editar à mão.\n"
         " * Fonte: os .txt em firmware/props/. Para mudar um adorno, edite o\n"
         " * mapa ASCII e rode o gerador de novo. */\n"
-        '#include "mascote_pixel_props.h"\n'
+        '#include "mascote_bytelo_props.h"\n'
     ]
     tabela, total = [], 0
     for nome in ORDEM:

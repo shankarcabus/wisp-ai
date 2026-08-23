@@ -1,4 +1,4 @@
-/* O PIXEL: cara amarela arredondada, olhos preto sólido.
+/* O BYTELO: cara amarela arredondada, olhos preto sólido.
  *
  * POR QUE OBJETOS LVGL E NÃO BITMAP
  * ---------------------------------
@@ -49,13 +49,29 @@
 
 #include "esp_log.h"
 #include "mascote.h"
-#include "mascote_pixel_props.h"
+#include "mascote_bytelo_props.h"
 
-static const char *TAG = "pixel";
+static const char *TAG = "bytelo";
 
 /* Unidades de arte na largura da cara, medidas na folha de referência. */
 #define ART_W 22
 #define U(d, n) ((int16_t) ((int32_t) (d) * (n) / ART_W))
+
+/* A CARA NÃO OCUPA A VAGA INTEIRA.
+ *
+ * 72% dela, centrada, e os 28% que sobram são onde os adornos moram. Isso é a
+ * composição da referência: a cara pequena no quadro e o adorno flutuando fora
+ * dela, sobre o fundo.
+ *
+ * A versão anterior desenhava a cara do tamanho da vaga, e aí os adornos não
+ * tinham para onde ir: sobrepunham a cabeça, e sobre amarelo um traço amarelo
+ * não existe, então precisavam ser escuros. Com a margem, eles voltam a ser
+ * amarelos como na folha.
+ *
+ * Nada disso toca em vaga_de(): a vaga continua sendo `d`, o contêiner continua
+ * `d` por `d`, e quem escolhe desenhar menor dentro dele é o personagem. */
+#define CARA_PCT 72
+#define CARA(d)  ((int16_t) ((int32_t) (d) * CARA_PCT / 100))
 
 /* Duas unidades de arte por degrau. Com três o canto ficava grosso e a
  * silhueta lia como cruz, não como quadrado arredondado. */
@@ -82,22 +98,27 @@ typedef struct {
     bool    sobrancelha;  /* preocupada: ponta INTERNA para cima */
     bool    pisca;
     /* Sem `respira` e sem `inclina`: os dois eram transformação de contêiner,
-     * que travou a placa. Ver a nota em pixel_animar(). O que distingue os
+     * que travou a placa. Ver a nota em bytelo_animar(). O que distingue os
      * estados é a cara e o adorno, não o movimento do corpo. */
-} pixel_alvo_t;
+} bytelo_alvo_t;
 
 /* Um por estado, na ordem de wisp_state_t (ui.h). Os oito estados da folha de
  * referência caem um a um nos do Wisp. */
-static const pixel_alvo_t ALVO[WISP_COUNT] = {
+static const bytelo_alvo_t ALVO[WISP_COUNT] = {
     /*                    olho        boca          prop            x    y  sobr  pisca */
     [WISP_IDLE]    = {OLHO_NORMAL, BOCA_NENHUMA, PROP_NENHUM,     0,   0, false, true },
-    [WISP_WORKING] = {OLHO_NORMAL, BOCA_NENHUMA, PROP_BOLHA,      7,  -7, false, true },
-    [WISP_TOOL]    = {OLHO_NORMAL, BOCA_NENHUMA, PROP_LAPTOP,     0,   7, false, true },
-    [WISP_ASKING]  = {OLHO_NORMAL, BOCA_NENHUMA, PROP_PERGUNTA,   7,  -6, false, true },
-    [WISP_WAITING] = {OLHO_TRISTE, BOCA_NENHUMA, PROP_MAOS,       0,   8, true,  true },
-    [WISP_DONE]    = {OLHO_ARCO,   BOCA_ABERTA,  PROP_FAISCAS,    7,  -7, false, false},
+    /* Os quatro adornos FLUTUANTES ficam fora da cara, na margem: a metade da
+     * cara são 11 unidades, então x=13 e y=-12 os põe soltos no fundo, como na
+     * folha de referência, e baixos o bastante para não encostar no indicador
+     * de bateria, que vive no canto superior direito. O laptop e as mãos são
+     * diferentes — o personagem os SEGURA, então sobrepõem o queixo. */
+    [WISP_WORKING] = {OLHO_NORMAL, BOCA_NENHUMA, PROP_BOLHA,     13, -12, false, true },
+    [WISP_TOOL]    = {OLHO_NORMAL, BOCA_NENHUMA, PROP_LAPTOP,     0,   8, false, true },
+    [WISP_ASKING]  = {OLHO_NORMAL, BOCA_NENHUMA, PROP_PERGUNTA,  13, -12, false, true },
+    [WISP_WAITING] = {OLHO_TRISTE, BOCA_NENHUMA, PROP_MAOS,       0,   9, true,  true },
+    [WISP_DONE]    = {OLHO_ARCO,   BOCA_ABERTA,  PROP_FAISCAS,   13, -12, false, false},
     [WISP_ERROR]   = {OLHO_TRISTE, BOCA_TRISTE,  PROP_NENHUM,     0,   0, true,  false},
-    [WISP_OFFLINE] = {OLHO_X,      BOCA_NENHUMA, PROP_WIFI,       0,  -7, false, false},
+    [WISP_OFFLINE] = {OLHO_X,      BOCA_NENHUMA, PROP_WIFI,       0, -15, false, false},
 };
 
 /* `done` não pisca porque os olhos já estão em arco: piscar um olho fechado não
@@ -143,7 +164,7 @@ typedef struct {
      * reaplicação. Enum recebendo -1 é comportamento que depende do
      * compilador. */
     int       p_olho;
-} pixel_t;
+} bytelo_t;
 
 static lv_obj_t *retangulo(lv_obj_t *pai, lv_color_t cor)
 {
@@ -161,7 +182,8 @@ static lv_obj_t *retangulo(lv_obj_t *pai, lv_color_t cor)
     return o;
 }
 
-static void geometria(pixel_t *p, int16_t d)
+/* `d` aqui é a medida da CARA, não da vaga — ver CARA() acima. */
+static void geometria(bytelo_t *p, int16_t d)
 {
     if (p->p_d == d) return;
     p->p_d = d;
@@ -189,17 +211,23 @@ static void geometria(pixel_t *p, int16_t d)
     /* Relevo: uma unidade de espessura, recuada dos degraus para não vazar no
      * canto cortado. A luz vem do mesmo lado nos oito estados — trocar de lado
      * entre estados faria o personagem parecer mudar de lugar na mesa. */
+    /* Alinhamento pelo CENTRO com deslocamento calculado, e não pelas bordas do
+     * contêiner: o contêiner é a vaga inteira e a cara é menor que ele, então
+     * LV_ALIGN_TOP_MID e companhia jogariam o relevo para a borda da vaga —
+     * quatro barras soltas a quarenta pixels do corpo. Foi o que aconteceu. */
     const int16_t esp = U(d, 1);
+    const int16_t meio = d / 2;
+
     lv_obj_set_size(p->luz[0], d - 2 * deg, esp);
-    lv_obj_align(p->luz[0], LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_align(p->luz[0], LV_ALIGN_CENTER, 0, -(meio - esp / 2));
     lv_obj_set_size(p->luz[1], esp, d - 2 * deg);
-    lv_obj_align(p->luz[1], LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_align(p->luz[1], LV_ALIGN_CENTER, -(meio - esp / 2), 0);
 
     /* A base é mais grossa que a lateral: é onde o personagem encosta. */
     lv_obj_set_size(p->sombra[0], d - 2 * deg, esp * 2);
-    lv_obj_align(p->sombra[0], LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_align(p->sombra[0], LV_ALIGN_CENTER, 0, meio - esp);
     lv_obj_set_size(p->sombra[1], esp, d - 2 * deg);
-    lv_obj_align(p->sombra[1], LV_ALIGN_RIGHT_MID, 0, 0);
+    lv_obj_align(p->sombra[1], LV_ALIGN_CENTER, meio - esp / 2, 0);
 
     for (int i = 0; i < 2; i++) {
         lv_obj_align(p->olho[i], LV_ALIGN_CENTER,
@@ -210,7 +238,7 @@ static void geometria(pixel_t *p, int16_t d)
     }
 }
 
-static void aplicar_olho(pixel_t *p, olho_t o, int16_t d)
+static void aplicar_olho(bytelo_t *p, olho_t o, int16_t d)
 {
     /* Só o olho na guarda: geometria() já invalidou p_olho quando `d` mudou. */
     if (p->p_olho == (int) o) return;
@@ -297,7 +325,7 @@ static void aplicar_olho(pixel_t *p, olho_t o, int16_t d)
  * personagem culpa quem está olhando, e o `error` do Wisp existe justamente
  * para dizer o contrário: a falha não é sua. O Terminal aprendeu isso primeiro
  * e registrou no `sob_invertida` da tabela dele. */
-static void aplicar_sobrancelha(pixel_t *p, bool mostrar, int16_t d)
+static void aplicar_sobrancelha(bytelo_t *p, bool mostrar, int16_t d)
 {
     if (p->p_sobr == (int) mostrar) return;
     p->p_sobr = (int) mostrar;
@@ -327,7 +355,7 @@ static void aplicar_sobrancelha(pixel_t *p, bool mostrar, int16_t d)
     }
 }
 
-static void aplicar_boca(pixel_t *p, boca_t b, int16_t d)
+static void aplicar_boca(bytelo_t *p, boca_t b, int16_t d)
 {
     if (p->p_boca == (int) b) return;
     p->p_boca = (int) b;
@@ -377,7 +405,7 @@ static void aplicar_boca(pixel_t *p, boca_t b, int16_t d)
  * aplicar_olho, para que ela restaure a forma no quadro seguinte. Se as duas
  * coisas rodassem no mesmo quadro, a guarda veria o mesmo estado de antes e o
  * olho ficaria fechado para sempre. */
-static bool piscando(pixel_t *p, const pixel_alvo_t *a, uint32_t agora)
+static bool piscando(bytelo_t *p, const bytelo_alvo_t *a, uint32_t agora)
 {
     if (!a->pisca) return false;
     if (p->prox_piscada == 0) p->prox_piscada = agora + 2600;
@@ -406,7 +434,8 @@ static bool piscando(pixel_t *p, const pixel_alvo_t *a, uint32_t agora)
  * lv_image_set_scale TRANSFORMA por software, o que custa ~0,76 µs por pixel de
  * saída nesta placa. Inaceitável por quadro; irrelevante uma vez por troca de
  * estado, e a guarda p_prop é o que garante "uma vez". */
-static void aplicar_prop(pixel_t *p, const pixel_alvo_t *a, int16_t d)
+static void aplicar_prop(bytelo_t *p, const bytelo_alvo_t *a, int16_t d,
+                         int16_t cx, int16_t cy)
 {
     if (p->p_prop == (int) a->prop) return;
     p->p_prop = (int) a->prop;
@@ -425,13 +454,16 @@ static void aplicar_prop(pixel_t *p, const pixel_alvo_t *a, int16_t d)
     lv_obj_set_style_transform_pivot_x(p->prop, dsc->header.w / 2, 0);
     lv_obj_set_style_transform_pivot_y(p->prop, dsc->header.h / 2, 0);
     lv_image_set_scale(p->prop, escala * 256);
-    lv_obj_align(p->prop, LV_ALIGN_CENTER, U(d, a->prop_x), U(d, a->prop_y));
+    /* Posição no espaço do PAI, somando o centro do mascote: o adorno é IRMÃO
+     * da cara, não filho. */
+    lv_obj_align(p->prop, LV_ALIGN_CENTER,
+                 cx + U(d, a->prop_x), cy + U(d, a->prop_y));
     lv_obj_remove_flag(p->prop, LV_OBJ_FLAG_HIDDEN);
 }
 
-static void pixel_criar(lv_obj_t *pai, mascote_t *m)
+static void bytelo_criar(lv_obj_t *pai, mascote_t *m)
 {
-    pixel_t *p = lv_malloc_zeroed(sizeof(pixel_t));
+    bytelo_t *p = lv_malloc_zeroed(sizeof(bytelo_t));
     m->interno = p;
     if (!p) { ESP_LOGE(TAG, "sem memoria para o mascote"); return; }
 
@@ -443,9 +475,6 @@ static void pixel_criar(lv_obj_t *pai, mascote_t *m)
     lv_obj_set_style_pad_all(p->raiz, 0, 0);
     lv_obj_set_style_bg_opa(p->raiz, LV_OPA_TRANSP, 0);
     lv_obj_set_style_radius(p->raiz, 0, 0);
-    /* Os adornos saem da caixa da cara — a bolha e o `?` ficam acima da cabeça,
-     * o laptop passa do queixo. Sem isto o LVGL os recorta na borda da raiz. */
-    lv_obj_add_flag(p->raiz, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
 
     for (int i = 0; i < 3; i++) p->corpo[i] = retangulo(p->raiz, C_BASE);
     for (int i = 0; i < 2; i++) {
@@ -464,7 +493,17 @@ static void pixel_criar(lv_obj_t *pai, mascote_t *m)
     p->boca = retangulo(p->raiz, C_OLHO);
     lv_obj_add_flag(p->boca, LV_OBJ_FLAG_HIDDEN);
 
-    p->prop = lv_image_create(p->raiz);
+    /* IRMÃO da cara, não filho.
+     *
+     * Como filho, um adorno que sai da caixa da cara é RECORTADO — e
+     * LV_OBJ_FLAG_OVERFLOW_VISIBLE não resolve quando a imagem está escalada,
+     * porque a área extra da transformação não entra na conta do pai. O `?`
+     * aparecia como um fragmento no canto.
+     *
+     * É a mesma razão pela qual a chama do Terminal é irmã do corpo dele. O
+     * preço é o mesmo: irmão não some por herança, então `dispor` tem de
+     * esconder o adorno explicitamente. */
+    p->prop = lv_image_create(pai);
     so_decoracao(p->prop);
     /* Pixel duro, não borrão: é o que separa pixel art de imagem de baixa
      * resolução ampliada. */
@@ -478,25 +517,26 @@ static void pixel_criar(lv_obj_t *pai, mascote_t *m)
     p->p_boca = -1;
 }
 
-static void pixel_animar(mascote_t *m, uint32_t agora, bool sozinho)
+static void bytelo_animar(mascote_t *m, uint32_t agora, bool sozinho)
 {
     (void) sozinho;
-    pixel_t *p = m->interno;
+    bytelo_t *p = m->interno;
     if (!p || !p->raiz) return;
 
-    const pixel_alvo_t *a = &ALVO[m->alvo];
-    geometria(p, m->d);
+    const bytelo_alvo_t *a = &ALVO[m->alvo];
+    const int16_t dc = CARA(m->d);
+    geometria(p, dc);
 
     if (piscando(p, a, agora)) {
         for (int i = 0; i < 2; i++)
-            lv_obj_set_height(p->olho[i], U(m->d, 1));
+            lv_obj_set_height(p->olho[i], U(dc, 1));
         p->p_olho = -1;
     } else {
-        aplicar_olho(p, a->olho, m->d);
+        aplicar_olho(p, a->olho, dc);
     }
-    aplicar_sobrancelha(p, a->sobrancelha, m->d);
-    aplicar_boca(p, a->boca, m->d);
-    aplicar_prop(p, a, m->d);
+    aplicar_sobrancelha(p, a->sobrancelha, dc);
+    aplicar_boca(p, a->boca, dc);
+    aplicar_prop(p, a, dc, m->x, m->y);
 
     /* NADA DE TRANSFORMAR O CONTÊINER.
      *
@@ -521,25 +561,37 @@ static void pixel_animar(mascote_t *m, uint32_t agora, bool sozinho)
     (void) a;
 }
 
-static void pixel_dispor(mascote_t *m, int16_t d, int16_t x, int16_t y,
+static void bytelo_dispor(mascote_t *m, int16_t d, int16_t x, int16_t y,
                          bool mostrar)
 {
-    pixel_t *p = m->interno;
+    bytelo_t *p = m->interno;
     if (!p || !p->raiz) return;
 
-    if (!mostrar) { lv_obj_add_flag(p->raiz, LV_OBJ_FLAG_HIDDEN); return; }
+    if (!mostrar) {
+        lv_obj_add_flag(p->raiz, LV_OBJ_FLAG_HIDDEN);
+        /* Irmão não some por herança. */
+        if (p->prop) lv_obj_add_flag(p->prop, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
     lv_obj_remove_flag(p->raiz, LV_OBJ_FLAG_HIDDEN);
+    /* A posição do adorno depende do centro do mascote, que acabou de mudar. */
+    p->p_prop = -1;
+    /* O contêiner ocupa a vaga inteira — é o que o layout pediu — e a cara é
+     * desenhada menor dentro dele. A margem é o espaço dos adornos. */
     lv_obj_set_size(p->raiz, d, d);
     lv_obj_align(p->raiz, LV_ALIGN_CENTER, x, y);
-    geometria(p, d);
+    geometria(p, CARA(d));
 }
 
-const personagem_t MASCOTE_PIXEL = {
-    .nome       = "pixel",
+const personagem_t MASCOTE_BYTELO = {
+    .nome       = "bytelo",
     /* Não usa a partição `storage`: a cara é desenhada, e os adornos que virão
      * moram no binário do app como arrays gerados em tempo de build. */
     .usa_assets = false,
-    .criar      = pixel_criar,
-    .animar     = pixel_animar,
-    .dispor     = pixel_dispor,
+    /* Sem rótulos: a referência é uma cara sozinha no quadro, e texto embaixo
+     * dela some com o silêncio que faz o personagem funcionar. */
+    .rotulos    = false,
+    .criar      = bytelo_criar,
+    .animar     = bytelo_animar,
+    .dispor     = bytelo_dispor,
 };

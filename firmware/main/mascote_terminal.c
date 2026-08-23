@@ -714,6 +714,7 @@ static void terminal_criar(lv_obj_t *pai, mascote_t *m)
 const personagem_t MASCOTE_TERMINAL = {
     .nome       = "terminal",
     .usa_assets = true,
+    .rotulos    = true,
     .criar      = terminal_criar,
     .animar     = terminal_animar,
     .dispor     = terminal_dispor,

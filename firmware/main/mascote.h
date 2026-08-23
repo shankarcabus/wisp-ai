@@ -41,8 +41,18 @@ typedef struct {
 } mascote_t;
 
 typedef struct {
-    const char *nome;            /* "terminal", "pixel" — o valor da NVS */
+    const char *nome;            /* "terminal", "bytelo" — o valor da NVS */
     bool        usa_assets;      /* true = tenta a partição `storage` */
+    /* Se o layout deve mostrar os rótulos de detalhe e projeto sob o mascote.
+     *
+     * É propriedade do PERSONAGEM porque é decisão de composição dele, mas os
+     * rótulos continuam sendo do layout: qualquer personagem os teria iguais, e
+     * quem os cria e posiciona é o ui.c.
+     *
+     * Desligado custa informação: aqueles dois textos são a ferramenta em
+     * execução e a lista de projetos, então sem eles a tela diz o ESTADO e não
+     * diz qual sessão. */
+    bool        rotulos;
 
     /* Uma vez por mascote, na construção da tela. */
     void (*criar)(lv_obj_t *pai, mascote_t *m);
@@ -76,4 +86,4 @@ lv_obj_t *barra(lv_obj_t *pai, int w, int h, lv_color_t cor, int x, int y);
 
 /* —— os personagens que existem —— */
 extern const personagem_t MASCOTE_TERMINAL;
-extern const personagem_t MASCOTE_PIXEL;
+extern const personagem_t MASCOTE_BYTELO;

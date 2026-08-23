@@ -78,7 +78,7 @@ this table is that none of these announce themselves.
   "it used to animate" usually means the assets partition stopped mounting.
 - **`ui: FPS: 0` or `1` with image art.** That is a quiet screen, not a slow
   one. The counter only counts real refreshes.
-- **The pixel character's body does not move.** Only its blink animates. Not an
+- **Bytelo's body does not move.** Only its blink animates. Not an
   omission: breathing it with a container transform hung the board, and
   redrawing 306×306 every frame is expensive even without a transform. The
   Terminal reaches the same conclusion from the other side — it animates a
@@ -100,8 +100,8 @@ this table is that none of these announce themselves.
 | `firmware/main/mascote.h` | the boundary between LAYOUT and CHARACTER — three calls, and the choice is data, never `#if` |
 | `firmware/main/mascote.c` | the registry: which characters exist, and name → character |
 | `firmware/main/mascote_terminal.c` | the retro computer, in both renderings: the mapped image art and the vector fallback |
-| `firmware/main/mascote_pixel.c` | the pixel character, drawn from LVGL objects |
-| `firmware/props/` + `firmware/tools/props_to_c.py` | the pixel character's adornments, as ASCII maps converted at build time. The `.c` is generated |
+| `firmware/main/mascote_bytelo.c` | the pixel character, drawn from LVGL objects |
+| `firmware/props/` + `firmware/tools/props_to_c.py` | Bytelo's adornments, as ASCII maps converted at build time. The `.c` is generated |
 | `sim/` | the board's screen, running the real `ui.c` on the Mac. Proves layout, proves nothing about cost |
 | `firmware/sdkconfig.defaults` + `.esp32s3` / `.esp32c6` | shared config plus per-chip; the split is required because `CONFIG_SPIRAM` and `ESP32S3_*_CACHE` do not exist in the C6's Kconfig |
 | `firmware/README.md` | the hardware detail behind all of the above |

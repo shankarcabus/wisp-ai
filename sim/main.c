@@ -121,7 +121,7 @@ int main(int argc, char **argv)
      * personagem (as interrogações do Terminal, criadas uma vez) apontando para
      * memória liberada. Trocar de personagem é relançar:
      *
-     *     WISP_MASCOT=pixel ./sim/build/wisp-sim
+     *     WISP_MASCOT=bytelo ./sim/build/wisp-sim
      */
     const personagem_t *personagem = mascote_por_nome(getenv("WISP_MASCOT"));
     mascote_escolher(personagem);

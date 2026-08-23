@@ -14,7 +14,7 @@ static const char *TAG = "mascote";
 /* Índice 0 é o padrão de fábrica. A ordem importa só por isso. */
 const personagem_t *const MASCOTES[] = {
     &MASCOTE_TERMINAL,
-    &MASCOTE_PIXEL,
+    &MASCOTE_BYTELO,
 };
 const int MASCOTES_QTD = (int) (sizeof(MASCOTES) / sizeof(MASCOTES[0]));
 

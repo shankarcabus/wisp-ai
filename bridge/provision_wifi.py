@@ -108,8 +108,8 @@ def ask(port: str) -> dict:
     # running this again — WiFi password included. That friction is the price of
     # not having a runtime channel for it; a field in the /state payload would
     # remove it.
-    escolha = _prompt("character (terminal / pixel) [terminal]: ").strip().lower()
-    if escolha not in ("terminal", "pixel"):
+    escolha = _prompt("character (terminal / bytelo) [terminal]: ").strip().lower()
+    if escolha not in ("terminal", "bytelo"):
         escolha = "terminal"
 
     return {"ssid": ssid, "pass": password, "host": host, "token": token,

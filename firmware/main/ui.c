@@ -241,19 +241,32 @@ static void aplicar_layout(int total)
         mascote_t *m = &g_m[i];
         bool ativo = i < total;
 
+        /* Os rótulos existem para qualquer personagem, mas aparecer é escolha
+         * dele: há personagem cuja composição é uma cara sozinha no quadro. */
+        const bool mostrar_rotulos = ativo && mascote_ativo()->rotulos;
         lv_obj_t *rotulos[] = {m->detail, m->project};
         for (size_t k = 0; k < 2; k++) {
             if (!rotulos[k]) continue;
-            if (ativo) lv_obj_remove_flag(rotulos[k], LV_OBJ_FLAG_HIDDEN);
-            else       lv_obj_add_flag(rotulos[k], LV_OBJ_FLAG_HIDDEN);
+            if (mostrar_rotulos) lv_obj_remove_flag(rotulos[k], LV_OBJ_FLAG_HIDDEN);
+            else                 lv_obj_add_flag(rotulos[k], LV_OBJ_FLAG_HIDDEN);
         }
 
         vaga_t v; vaga_de(total, i, &v);
+
+        /* Sem rótulos, o deslocamento vertical que abria espaço para eles perde
+         * a razão de ser: com uma sessão, o mascote volta ao centro da tela em
+         * vez de ficar alto com o vazio embaixo.
+         *
+         * O ajuste é AQUI, e não no personagem: quem sabe por que o offset
+         * existia é o layout. vaga_de() fica intocada. */
+        int16_t cy = v.y;
+        if (!mostrar_rotulos && total <= 1) cy = 0;
+
         /* x e y ficam guardados porque a animação do personagem precisa deles
          * para o que orbita o corpo, e chamar vaga_de() de lá seria o layout
          * atravessando a fronteira na direção errada. */
-        m->d = v.d; m->x = v.x; m->y = v.y;
-        mascote_ativo()->dispor(m, v.d, v.x, v.y, ativo);
+        m->d = v.d; m->x = v.x; m->y = cy;
+        mascote_ativo()->dispor(m, v.d, v.x, cy, ativo);
         if (!ativo) continue;
 
     lv_obj_set_style_text_font(m->detail, v.f_det, 0);

@@ -87,7 +87,7 @@ void cena_ajuda(void)
     printf("comandos: n <1-4> | s <estado> [i] | todos <estado> | rest | wake\n"
            "          tile <0|1> | bat <pct|-1> | lim | nolim\n"
            "          shot <arquivo.bmp> | quit | ?\n"
-           "personagem: escolhido no boot — WISP_MASCOT=pixel ./sim/build/wisp-sim\n"
+           "personagem: escolhido no boot — WISP_MASCOT=bytelo ./sim/build/wisp-sim\n"
            "estados : idle working tool asking waiting done error offline\n");
 }
 

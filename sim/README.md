@@ -25,9 +25,9 @@ cmake -S sim -B sim/build && cmake --build sim/build -j
 ### Escolhendo o personagem
 
 ```bash
-WISP_MASCOT=pixel ./sim/build/wisp-sim      # o personagem novo
+WISP_MASCOT=bytelo ./sim/build/wisp-sim      # o Bytelo
 ./sim/build/wisp-sim                        # terminal, o padrão
-WISP_MASCOT=pixel ./sim/folha.sh sim/px     # a folha inteira, com o pixel
+WISP_MASCOT=bytelo ./sim/folha.sh sim/px     # a folha inteira, com o pixel
 ```
 
 Espelha a placa, onde a escolha vem da chave `mascot` na NVS e é lida no boot

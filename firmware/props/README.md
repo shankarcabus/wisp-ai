@@ -1,4 +1,4 @@
-# Os adornos do personagem pixel
+# Os adornos do Bytelo
 
 Bolha de pensamento, laptop com mãos, `?`, mãos juntas, faíscas e wifi cortado.
 São a parte da referência que não sai de parâmetro: dedos e um laptop não são
@@ -15,7 +15,7 @@ Editar é editar texto: mude o mapa, rode o gerador, olhe no simulador. O ciclo
 ```bash
 python3 firmware/tools/props_to_c.py
 cmake --build sim/build -j
-WISP_MASCOT=pixel ./sim/build/wisp-sim
+WISP_MASCOT=bytelo ./sim/build/wisp-sim
 ```
 
 ## Por que os adornos flutuantes são ESCUROS
@@ -51,4 +51,4 @@ tempo de execução nesta placa: o FPS caiu de 62 para 1–7 e a RAM interna che
 a **12 bytes** de mínimo histórico. A regra do repositório é que a conversão
 acontece antes de o firmware rodar. O gerador obedece.
 
-`firmware/main/mascote_pixel_props.c` é **gerado**. Não editar à mão.
+`firmware/main/mascote_bytelo_props.c` é **gerado**. Não editar à mão.
