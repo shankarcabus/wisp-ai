@@ -195,7 +195,8 @@ typedef struct {
     lv_obj_t *moldura, *luz, *scan[2], *topo;  /* profundidade */
     lv_obj_t *foto;          /* mascote de imagem; NULL = desenhado */
     int16_t p_boca, p_esc;   /* guardas do rosto: estado e escala */
-    uint8_t p_escala;        /* guarda da escala da FOTO, em % */
+    int16_t p_escala_dv;     /* guarda da escala da FOTO: o dv aplicado */
+    int16_t p_chama_esc, p_chama_x, p_chama_y;  /* guardas da chama */
     /* Pontos da sobrancelha. lv_line guarda o PONTEIRO, nao copia — se este
      * array sair de escopo, o LVGL desenha lixo. Por isso vive aqui. */
     lv_point_precise_t sob_pts[2][2];
@@ -391,13 +392,27 @@ static void terminal_animar(mascote_t *m, uint32_t agora, bool sozinho)
         /* Parada de proposito. Tremular era mover um objeto sobre o fundo a
          * cada quadro — mais uma fonte de rastro, pelo mesmo motivo das
          * sobrancelhas. Quem se mexe aqui e a luz em orbita, que ja da
-         * o sinal de movimento. */
-        int16_t cd = 16 * esc / 236;
-        if (cd < 4) cd = 4;
+         * o sinal de movimento.
+         *
+         * E PARADA TEM DE SIGNIFICAR PARADA. Estas três linhas escreviam os
+         * MESMOS valores a cada quadro, e `lv_obj_align` não é guardado pelo
+         * LVGL — ele sempre escreve LV_STYLE_ALIGN, que carrega
+         * LAYOUT_UPDATE, então invalidava o objeto e sujava o layout do pai
+         * 62 vezes por segundo. Medido no simulador: 600px por quadro, 55% de
+         * tudo o que este personagem redesenhava, e uma transação de flush
+         * extra por quadro. Este arquivo já documenta o que invalidação por
+         * quadro custou aqui uma vez: 6 FPS. */
         lv_obj_remove_flag(T->chama, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_size(T->chama, cd, cd * 3 / 2);
-        lv_obj_set_style_radius(T->chama, cd / 2, 0);
-        lv_obj_align(T->chama, LV_ALIGN_CENTER, m->x, m->y - esc / 2 - cd);
+        if (T->p_chama_esc != esc || T->p_chama_x != m->x || T->p_chama_y != m->y) {
+            T->p_chama_esc = esc;
+            T->p_chama_x = m->x;
+            T->p_chama_y = m->y;
+            int16_t cd = 16 * esc / 236;
+            if (cd < 4) cd = 4;
+            lv_obj_set_size(T->chama, cd, cd * 3 / 2);
+            lv_obj_set_style_radius(T->chama, cd / 2, 0);
+            lv_obj_align(T->chama, LV_ALIGN_CENTER, m->x, m->y - esc / 2 - cd);
+        }
     }
 
     /* Luz: ângulo ACUMULADO e velocidade interpolada. Derivar de
@@ -443,11 +458,13 @@ static void terminal_animar(mascote_t *m, uint32_t agora, bool sozinho)
  * ————————————————————————————————————————————————
  * Saiu de aplicar_layout() em ui.c. O que ficou lá: a vaga, os rótulos e as
  * outras telas. O que veio para cá: tudo o que tem forma de computador. */
-static void terminal_dispor(mascote_t *m, int16_t d, int16_t x, int16_t y,
-                            bool mostrar, uint8_t tamanho)
+static void terminal_dispor(mascote_t *m, bool mostrar, const wisp_cfg_t *cfg)
 {
     terminal_t *T = m->interno;
     if (!T) return;
+
+    /* A vaga vem do próprio mascote: é o layout que acabou de escrevê-la. */
+    const int16_t d = m->d, x = m->x, y = m->y;
 
     /* A chama entra na lista porque é IRMÃ do corpo, não filha: olhos e boca
      * somem por herança, ela não, e ficaria pairando sozinha sobre o relógio.
@@ -472,19 +489,24 @@ static void terminal_dispor(mascote_t *m, int16_t d, int16_t x, int16_t y,
      *
      * Mas eles escalam de formas DIFERENTES:
      *
-     *   vetorial  encolhe o `d`, e as partes são todas fração dele. Barato:
-     *             objeto redimensionado, nenhuma transformação.
-     *   foto      NÃO pode encolher o objeto. O ui.c registra que a arte tem
-     *             exatamente 306px e que imagem MAIOR que o objeto sai CORTADA,
-     *             não reduzida — um pedaço de computador não é um computador
-     *             menor. Escalar exige lv_image_set_scale, que transforma por
-     *             software: a conta que travou esta placa uma vez foram 93.636
-     *             pixels a ~0,76 µs. Aceitável aqui e só aqui porque `dispor`
-     *             roda na mudança de layout ou de ajuste, nunca por quadro, e a
-     *             guarda `p_escala` é o que faz "nunca" ser verdade. */
-    static const uint8_t PCT[3] = {70, 100, 118};
-    const uint8_t pct = PCT[tamanho < 3 ? tamanho : 1];
-    const int16_t dv = (int16_t) ((int32_t) d * pct / 100);
+     *   vetorial  as partes são todas fração de `dv`. Barato: objeto
+     *             redimensionado, nenhuma transformação.
+     *   foto      escala por lv_image_set_scale, porque imagem MAIOR que o
+     *             objeto sai CORTADA e não reduzida — um pedaço de computador
+     *             não é um computador menor. Isso transforma por software, e a
+     *             conta que travou esta placa uma vez foram 93.636 pixels a
+     *             ~0,76 µs. Aceitável aqui e só aqui porque `dispor` roda na
+     *             mudança de layout ou de ajuste, nunca por quadro, e a guarda
+     *             abaixo é o que faz "nunca" ser verdade.
+     *
+     * A ESCALA SAI DA LARGURA NATURAL DA ARTE, não de um 306 escrito à mão.
+     * A versão anterior escalava pela porcentagem do ajuste e nada mais, o que
+     * só funciona enquanto a vaga tiver exatamente o tamanho da arte — e
+     * amarrava o 306 de vaga_de() à resolução dos PNG, através de uma interface
+     * que não tem como dizer isso. `carregar_fotos()` já lê `header.w` do próprio
+     * asset justamente para a medida não estar no código; aqui ela é usada. */
+    static const uint8_t PCT[WISP_TAM_QTD] = {70, 100, 118};
+    const int16_t dv = (int16_t) ((int32_t) d * PCT[cfg->tamanho] / 100);
 
     /* Com foto, o boneco desenhado inteiro sai de cena. Deixar os dois
      * visíveis não daria um híbrido, daria olhos flutuando sobre a imagem. */
@@ -493,13 +515,15 @@ static void terminal_dispor(mascote_t *m, int16_t d, int16_t x, int16_t y,
                                T->braco[0], T->braco[1]};
         for (size_t k = 0; k < 5; k++)
             lv_obj_add_flag(desenho[k], LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_size(T->foto, d, d);
+        lv_obj_set_size(T->foto, dv, dv);
         lv_obj_align(T->foto, LV_ALIGN_CENTER, x, y);
-        if (T->p_escala != pct) {
-            T->p_escala = pct;
-            lv_image_set_scale(T->foto, 256 * pct / 100);
+        /* Os oito assets são um conjunto só, convertidos juntos da mesma pasta,
+         * então a largura de qualquer um serve como a natural. */
+        const int32_t nat = s_dsc[WISP_IDLE].header.w;
+        if (T->p_escala_dv != dv && nat > 0) {
+            T->p_escala_dv = dv;
+            lv_image_set_scale(T->foto, (int32_t) 256 * dv / nat);
         }
-
     }
 
     /* Carcaça: quadrada com cantos generosos — o Macintosh original.
@@ -745,14 +769,6 @@ static void terminal_criar(lv_obj_t *pai, mascote_t *m)
  * boca são todos descendentes de `corpo`. */
 static void terminal_destruir(mascote_t *m)
 {
-    /* A contagem vem ANTES da saída antecipada: um mascote cujo criar() falhou
-     * em alocar tem `interno` nulo e nada para apagar, mas ainda conta como um
-     * dos que saíram de cena. Contar depois deixaria o contador travado, e as
-     * interrogações nunca seriam apagadas. */
-    static int vivos = 0;
-    if (vivos == 0) vivos = WISP_MAX_SESSIONS;
-    const bool ultimo = (--vivos == 0);
-
     terminal_t *T = m->interno;
     if (T) {
         lv_obj_t *raizes[] = {T->corpo, T->braco[0], T->braco[1],
@@ -772,9 +788,14 @@ static void terminal_destruir(mascote_t *m)
      * aparece longe da causa: lixo ou crash ao entrar em `asking`, muitas trocas
      * depois de a troca ter "funcionado".
      *
-     * Só o último mascote a sair as apaga, porque só ele sabe que não há mais
-     * ninguém usando. Contar é mais simples que descobrir. */
-    if (ultimo) {
+     * Quem decide é a MESMA flag que a criação usa. A primeira versão contava
+     * quantos mascotes já tinham saído e apagava no último — um segundo
+     * mecanismo, mais frágil, para responder o que o primeiro já respondia: o
+     * contador dessincronizava para sempre se alguma vez alguém destruísse um
+     * subconjunto, e passou a ser exatamente o caso quando a criação virou
+     * preguiçosa. É seguro porque ui_personagem() destrói todos em sequência,
+     * sob o mutex, e nada anima entre o primeiro e o último. */
+    if (g_interrog_prontas) {
         for (int i = 0; i < QTD_INTERROG; i++) {
             if (g_interrog[i]) lv_obj_delete(g_interrog[i]);
             g_interrog[i] = NULL;
@@ -786,7 +807,6 @@ static void terminal_destruir(mascote_t *m)
 const personagem_t MASCOTE_TERMINAL = {
     .nome       = "terminal",
     .usa_assets = true,
-    .rotulos    = true,
     .criar      = terminal_criar,
     .animar     = terminal_animar,
     .dispor     = terminal_dispor,

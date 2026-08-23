@@ -37,30 +37,52 @@ enum Ajustes {
     static let kSoundOn      = "ui.mac.sound.enabled"
     static let kSoundStates  = "ui.mac.sound.states"
 
+    // ── Os acessores ──
+    //
+    // Três helpers em vez de sete corpos parecidos. O que importa aqui não é a
+    // economia de linhas: é que "gravar E publicar" estava escrito sete vezes, e
+    // um ajuste novo que esquecesse o publicar() daria um painel que parece certo
+    // e uma placa que nunca muda, sem nada falhando. Agora esquecer é impossível
+    // — não há como gravar sem passar por `gravar`.
+    //
+    // Os GETTERS continuam separados porque as quatro formas de valor são
+    // genuinamente diferentes (enum, Bool com padrão, String, Set), e forçá-las
+    // num acessor genérico esconderia o padrão de cada uma.
+
+    private static func gravar(_ v: Any, _ chave: String) {
+        UserDefaults.standard.set(v, forKey: chave)
+        publicar()
+    }
+    private static func bool(_ chave: String, _ padrao: Bool) -> Bool {
+        UserDefaults.standard.object(forKey: chave) as? Bool ?? padrao
+    }
+    private static func tamanho(_ chave: String) -> Tamanho {
+        Tamanho(rawValue: UserDefaults.standard.string(forKey: chave) ?? "") ?? .medium
+    }
+
     static var boardSize: Tamanho {
-        get { Tamanho(rawValue: UserDefaults.standard.string(forKey: kBoardSize) ?? "") ?? .medium }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: kBoardSize); publicar() }
+        get { tamanho(kBoardSize) }
+        set { gravar(newValue.rawValue, kBoardSize) }
     }
     static var macSize: Tamanho {
-        get { Tamanho(rawValue: UserDefaults.standard.string(forKey: kMacSize) ?? "") ?? .medium }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: kMacSize); publicar() }
+        get { tamanho(kMacSize) }
+        set { gravar(newValue.rawValue, kMacSize) }
     }
     static var boardAction: Bool {
-        get { UserDefaults.standard.object(forKey: kBoardAction) as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: kBoardAction); publicar() }
+        get { bool(kBoardAction, true) }
+        set { gravar(newValue, kBoardAction) }
     }
     static var boardProject: Bool {
-        get { UserDefaults.standard.object(forKey: kBoardProject) as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: kBoardProject); publicar() }
+        get { bool(kBoardProject, true) }
+        set { gravar(newValue, kBoardProject) }
     }
     static var boardLanguage: String {
         get { UserDefaults.standard.string(forKey: kBoardLang) ?? "en" }
-        set { UserDefaults.standard.set(newValue, forKey: kBoardLang); publicar() }
+        set { gravar(newValue, kBoardLang) }
     }
-
     static var soundEnabled: Bool {
-        get { UserDefaults.standard.object(forKey: kSoundOn) as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: kSoundOn); publicar() }
+        get { bool(kSoundOn, true) }
+        set { gravar(newValue, kSoundOn) }
     }
 
     /// Em quais estados tocar. Padrão nos dois que significam "o Claude está te
@@ -72,10 +94,7 @@ enum Ajustes {
             else { return ["asking", "waiting"] }
             return Set(a)
         }
-        set {
-            UserDefaults.standard.set(newValue.sorted(), forKey: kSoundStates)
-            publicar()
-        }
+        set { gravar(newValue.sorted(), kSoundStates) }
     }
 
     /// Onde o JSON é publicado.

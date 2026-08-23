@@ -146,10 +146,14 @@ struct Galeria: View {
 struct CaixasDeSom: View {
     @Binding var estados: Set<String>
 
-    private let linhas: [[MascotState]] = [
-        [.idle, .working, .tool, .asking],
-        [.waiting, .done, .error, .offline],
-    ]
+    /// As fileiras saem de `allCases`, em blocos de quatro. Estavam escritas à
+    /// mão, o que fazia um estado novo aparecer na galeria (que já deriva de
+    /// `allCases`) e faltar aqui — silenciosamente impossível de ligar.
+    private var linhas: [[MascotState]] {
+        stride(from: 0, to: MascotState.allCases.count, by: 4).map { i in
+            Array(MascotState.allCases[i ..< min(i + 4, MascotState.allCases.count)])
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -183,14 +187,22 @@ struct Panel: View {
     var showsFooter = true
     @State private var openAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
-    @State private var character = Sprites.chosen
-    @State private var acao       = Ajustes.boardAction
-    @State private var projetos   = Ajustes.boardProject
-    @State private var idioma     = Ajustes.boardLanguage
-    @State private var tamPlaca   = Ajustes.boardSize
-    @State private var tamMac     = Ajustes.macSize
-    @State private var somOn      = Ajustes.soundEnabled
-    @State private var somEstados = Ajustes.soundStates
+    /// Contador de revisão: a única coisa que o SwiftUI precisa observar para
+    /// reavaliar o painel quando um ajuste muda.
+    ///
+    /// Antes cada ajuste tinha um @State que copiava o valor do `Ajustes` na
+    /// construção da View, pareado à mão com um `.onChange` que o escrevia de
+    /// volta. Sete cópias e sete pares. O risco não era o tamanho: um `.onChange`
+    /// esquecido dá um controle que se move na tela e não persiste, sem nada
+    /// falhando — e um ajuste novo exigia três edições coordenadas.
+    @State private var revisao = 0
+
+    /// Liga um controle direto ao `Ajustes`, sem estado intermediário. A leitura
+    /// vai à fonte; a escrita vai à fonte e pede uma reavaliação.
+    private func liga<T>(_ ler: @escaping () -> T,
+                         _ gravar: @escaping (T) -> Void) -> Binding<T> {
+        Binding(get: ler, set: { gravar($0); revisao += 1 })
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -395,64 +407,61 @@ struct Panel: View {
             SectionHeader(title: "Mascot")
                 .padding(.top, 2)
 
-            Galeria(personagem: character)
+            Galeria(personagem: Sprites.chosen)
 
             if !Sprites.available().isEmpty {
-                Picker("Character", selection: $character) {
+                Picker("Character",
+                       selection: liga({ Sprites.chosen }, { Sprites.chosen = $0 })) {
                     Text("Wisp (vector)").tag("")
                     ForEach(Sprites.available(), id: \.self) { Text($0).tag($0) }
                 }
                 .font(.system(size: 11))
-                .onChange(of: character) { _, chosen in Sprites.chosen = chosen }
             }
 
-            Toggle(isOn: $acao) {
+            Toggle(isOn: liga({ Ajustes.boardAction }, { Ajustes.boardAction = $0 })) {
                 Text("Action under the mascot").font(.system(size: 11))
             }
             .toggleStyle(.checkbox)
-            .onChange(of: acao) { _, v in Ajustes.boardAction = v }
             .help("On the board. In Portuguese the label shows the state, "
                   + "because the tool name it would show instead comes from the "
                   + "bridge in English and cannot be translated.")
 
-            Toggle(isOn: $projetos) {
+            Toggle(isOn: liga({ Ajustes.boardProject }, { Ajustes.boardProject = $0 })) {
                 Text("Projects under the mascot").font(.system(size: 11))
             }
             .toggleStyle(.checkbox)
-            .onChange(of: projetos) { _, v in Ajustes.boardProject = v }
             .help("On the board. The list of running sessions, one line each.")
 
-            Picker("Language", selection: $idioma) {
+            Picker("Language",
+                   selection: liga({ Ajustes.boardLanguage }, { Ajustes.boardLanguage = $0 })) {
                 Text("English").tag("en")
                 Text("Português").tag("pt")
             }
             .font(.system(size: 11))
-            .onChange(of: idioma) { _, v in Ajustes.boardLanguage = v }
 
-            Picker("Size on the board", selection: $tamPlaca) {
+            Picker("Size on the board",
+                   selection: liga({ Ajustes.boardSize }, { Ajustes.boardSize = $0 })) {
                 ForEach(Ajustes.Tamanho.allCases, id: \.self) { Text($0.rotulo).tag($0) }
             }
             .font(.system(size: 11))
-            .onChange(of: tamPlaca) { _, v in Ajustes.boardSize = v }
 
-            Picker("Size on the Mac", selection: $tamMac) {
+            Picker("Size on the Mac",
+                   selection: liga({ Ajustes.macSize }, { Ajustes.macSize = $0 })) {
                 ForEach(Ajustes.Tamanho.allCases, id: \.self) { Text($0.rotulo).tag($0) }
             }
             .font(.system(size: 11))
-            .onChange(of: tamMac) { _, v in Ajustes.macSize = v }
 
-            Toggle(isOn: $somOn) {
+            Toggle(isOn: liga({ Ajustes.soundEnabled }, { Ajustes.soundEnabled = $0 })) {
                 Text("Sound when the state changes").font(.system(size: 11))
             }
             .toggleStyle(.checkbox)
-            .onChange(of: somOn) { _, v in Ajustes.soundEnabled = v }
             .help("On the Mac. The C6 board has no usable audio — no I2S pins "
                   + "mapped and the amplifier behind an expander nobody drives.")
 
-            if somOn {
-                CaixasDeSom(estados: $somEstados)
+            if Ajustes.soundEnabled {
+                CaixasDeSom(estados: liga({ Ajustes.soundStates },
+                                          { Ajustes.soundStates = $0 }))
                     .padding(.leading, 18)
-                    .onChange(of: somEstados) { _, v in Ajustes.soundStates = v }
             }
 
             Divider()

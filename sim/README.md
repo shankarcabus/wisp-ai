@@ -151,6 +151,9 @@ Dois detalhes que a exportação resolve sozinha: o fundo preto opaco que o
 durante a captura e volta depois; e a bateria sai com `battery_pct = -1`, que o
 `ui.c` já trata como "sem medida, rótulo vazio".
 
-Só serve a personagem **desenhado**, sem rótulos — o comando recusa quem tem
-`rotulos = true`, porque o texto entraria no sprite. O Terminal não precisa
-disso: a arte dele já existe em `firmware/assets/`.
+Os rótulos saem **durante** a exportação e voltam depois, junto com a bateria —
+o que o sprite não pode ter é texto, e desligar o texto é uma linha. A primeira
+versão recusava personagem que mostrasse rótulos, guardada por uma propriedade
+que depois deixou de existir; recusar era a resposta errada de todo jeito.
+
+O Terminal não precisa disto: a arte dele já existe em `firmware/assets/`.

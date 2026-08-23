@@ -88,13 +88,36 @@ typedef struct {
     bool    acao;      /* mostrar o rótulo de detalhe */
     bool    projetos;  /* mostrar a lista de projetos */
     bool    pt;        /* texto em português; false = inglês */
-    uint8_t tamanho;   /* 0 pequeno, 1 médio, 2 grande */
+    uint8_t tamanho;   /* WISP_TAM_*, já validado por ui_configurar() */
 } wisp_cfg_t;
+
+/* Os degraus de tamanho. O que cada um SIGNIFICA é do personagem — a mesma
+ * palavra não quer dizer o mesmo para uma imagem e para uma cara desenhada. */
+typedef enum { WISP_TAM_PEQUENO = 0, WISP_TAM_MEDIO, WISP_TAM_GRANDE,
+               WISP_TAM_QTD } wisp_tam_t;
+
+/* O padrão, num lugar só. É o comportamento de antes de os ajustes existirem,
+ * então uma placa que nunca receba a chave `ui` não muda de cara. Estava escrito
+ * por extenso em três arquivos, e um quinto campo era uma edição em três lugares
+ * — com o simulador silenciosamente deixando de reproduzir a placa. */
+#define WISP_CFG_PADRAO { .acao = true, .projetos = true, \
+                          .pt = false, .tamanho = WISP_TAM_MEDIO }
+
+/* "small"/"medium"/"large" -> degrau. Desconhecido vira médio.
+ *
+ * Vive aqui pelo mesmo motivo que ui_state_from_text(): a placa e o simulador
+ * decodificavam a mesma string cada um do seu jeito, e o simulador é a
+ * ferramenta com que a placa se verifica. */
+uint8_t ui_tamanho_from_text(const char *s);
 
 /* Aplica os ajustes. Toma o mutex do LVGL sozinha — chamável de qualquer task.
  * Igual ao que já vale não faz nada, então quem chama pode chamar a cada
  * payload sem se perguntar se mudou. */
 void ui_configurar(const wisp_cfg_t *c);
+
+/* Os ajustes em vigor, para quem precise mexer e devolver — o exportador de
+ * sprites do simulador desliga os rótulos e os repõe. Somente leitura. */
+const wisp_cfg_t *ui_ajustes(void);
 
 /* Troca o personagem desenhado, reconstruindo os objetos da tela.
  *

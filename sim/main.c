@@ -101,7 +101,6 @@ int main(int argc, char **argv)
         disp = lv_sdl_window_create(480, 480);
         lv_sdl_window_set_title(disp, "Wisp — simulador da placa");
     }
-    (void) disp;
     /* SEM indev de mouse, de propósito.
      *
      * lv_sdl_mouse_create() alimenta o LVGL com a posição do mouse REAL da
@@ -115,14 +114,16 @@ int main(int argc, char **argv)
      * faria. Reabilitar o mouse aqui reintroduz a indeterminação e invalida a
      * folha de contato. */
 
-    /* O personagem é escolhido NO BOOT, como na placa — lá vem da NVS, aqui de
-     * WISP_MASCOT. Não há comando para trocar em tempo de execução, e isso é
-     * deliberado: reconstruir a tela deixaria os objetos compartilhados de um
-     * personagem (as interrogações do Terminal, criadas uma vez) apontando para
-     * memória liberada. Trocar de personagem é relançar:
+    /* O personagem INICIAL, como na placa — lá vem da NVS, aqui de WISP_MASCOT:
      *
      *     WISP_MASCOT=bytelo ./sim/build/wisp-sim
-     */
+     *
+     * Trocar em tempo de execução também existe, pelo comando `char`. Não
+     * existia quando este comentário foi escrito, e a razão era boa: sem um
+     * `destruir` na interface de personagem, reconstruir a tela deixava os
+     * objetos compartilhados do Terminal — as interrogações, criadas uma vez —
+     * apontando para memória liberada. Com `destruir`, a troca é a mesma que a
+     * placa faz quando o painel publica outra escolha. */
     const personagem_t *personagem = mascote_por_nome(getenv("WISP_MASCOT"));
     mascote_escolher(personagem);
     printf("I (sim) personagem: %s\n", personagem->nome);

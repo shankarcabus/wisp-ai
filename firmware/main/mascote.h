@@ -15,6 +15,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "desenho.h"
 #include "lvgl.h"
 #include "ui.h"
 
@@ -43,21 +44,6 @@ typedef struct {
 typedef struct {
     const char *nome;            /* "terminal", "bytelo" — o valor da NVS */
     bool        usa_assets;      /* true = tenta a partição `storage` */
-    /* Se o layout deve mostrar os rótulos de detalhe e projeto sob o mascote.
-     *
-     * É propriedade do PERSONAGEM porque é decisão de composição dele, mas os
-     * rótulos continuam sendo do layout: qualquer personagem os teria iguais, e
-     * quem os cria e posiciona é o ui.c.
-     *
-     * Desligado custa informação: aqueles dois textos são a ferramenta em
-     * execução e a lista de projetos, então sem eles a tela diz o ESTADO e não
-     * diz qual sessão.
-     *
-     * É o VALOR INICIAL, não um veto: o ui_create() o copia para os ajustes em
-     * vigor, e a partir do primeiro payload quem manda é o painel. Já foi veto
-     * uma vez, e o efeito era que os toggles não funcionavam com um personagem
-     * que sugerisse esconder. */
-    bool        rotulos;
 
     /* Uma vez por mascote, na construção da tela. */
     void (*criar)(lv_obj_t *pai, mascote_t *m);
@@ -69,12 +55,15 @@ typedef struct {
     /* Quando o layout muda de tamanho, de posição, de visibilidade ou de
      * ajuste. `mostrar` false esconde tudo o que pertence ao personagem.
      *
-     * `tamanho` é o degrau escolhido no painel: 0 pequeno, 1 médio, 2 grande. O
-     * que cada degrau SIGNIFICA é do personagem, não do layout — a mesma palavra
-     * não quer dizer o mesmo para uma imagem de 306px e para uma cara desenhada
-     * a partir de objetos. */
-    void (*dispor)(mascote_t *m, int16_t d, int16_t x, int16_t y, bool mostrar,
-                   uint8_t tamanho);
+     * A vaga chega pelo próprio `mascote_t` — `d`, `x` e `y`, que o layout
+     * acabou de escrever — e os ajustes chegam inteiros. A versão anterior
+     * passava d/x/y como argumentos ALÉM de guardá-los no struct, e recebia um
+     * único campo da config: cada ajuste novo que um personagem precisasse
+     * honrar era um parâmetro a mais, tocando este header e os dois
+     * personagens. O que cada degrau de tamanho SIGNIFICA continua sendo do
+     * personagem — a mesma palavra não quer dizer o mesmo para uma imagem de
+     * 306px e para uma cara desenhada a partir de objetos. */
+    void (*dispor)(mascote_t *m, bool mostrar, const wisp_cfg_t *cfg);
 
     /* Desfaz o que criar() fez: apaga os objetos e libera o bloco `interno`.
      * Chamada com o mutex do LVGL JÁ na mão.
@@ -98,9 +87,6 @@ const personagem_t *mascote_por_nome(const char *nome);
 /* Escolhe o personagem ativo. Chamar ANTES de ui_create(). */
 void mascote_escolher(const personagem_t *p);
 const personagem_t *mascote_ativo(void);
-
-/* —— helpers de desenho, definidos em ui.c —— */
-void      so_decoracao(lv_obj_t *o);
 lv_obj_t *disco(lv_obj_t *pai, int d, lv_color_t cor, int x, int y);
 lv_obj_t *barra(lv_obj_t *pai, int w, int h, lv_color_t cor, int x, int y);
 

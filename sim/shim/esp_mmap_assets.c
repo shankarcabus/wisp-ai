@@ -6,7 +6,7 @@
  * que só aquele componente sabe ler. Os arquivos individuais em
  * mmap_build/assets/storage/ são a saída direta do LVGLImage.py: 12 bytes de
  * lv_image_header_t seguidos dos planos de cor e alfa. Esse formato está
- * documentado no próprio ui.c, e ler dele significa que o simulador exercita
+ * documentado no próprio mascote_terminal.c, e ler dele significa que o simulador exercita
  * o MESMO parsing de cabeçalho que a placa.
  *
  * OS DOIS BYTES
@@ -19,14 +19,14 @@
  *
  * ORDEM ALFABÉTICA
  * ----------------
- * A tabela IDX[] de ui.c mapeia estado -> índice contando com a ordem
+ * A tabela IDX[] do mascote_terminal.c mapeia estado -> índice contando com a ordem
  * alfabética dos arquivos na partição. scandir() com alphasort() reproduz
  * exatamente isso.
  *
  * SE NÃO HOUVER BUILD
  * -------------------
  * mmap_build/ é gerado por `idf.py build` e é gitignored. Sem ele, esta função
- * devolve ESP_FAIL, ui.c avisa "particao de mascotes nao abriu — segue no
+ * devolve ESP_FAIL, o personagem avisa "particao de mascotes nao abriu — segue no
  * vetor" e cai no mascote vetorial. É o mesmo caminho de degradação da placa
  * quando o mmap falha, e é justamente o que queremos poder ver. */
 #include "esp_mmap_assets.h"
@@ -37,7 +37,22 @@
 #include <string.h>
 
 #define ASSETS_MAX 16
-#define PASTA "firmware/build/mmap_build/assets/storage"
+/* ONDE OS .bin INDIVIDUAIS FICAM — e por que é uma LISTA.
+ *
+ * O caminho era fixo, e quebrou: o esp_mmap_assets passou a escrever os
+ * intermediários num subdiretório OCULTO, `.storage.bin.tmp/`, em vez de direto
+ * em `storage/`. O sintoma foi cruel — os assets "apareciam e desapareciam"
+ * entre builds, e como a ausência deles é um caminho de degradação legítimo (cai
+ * no vetorial), nada gritava. Duas folhas de contato foram comparadas em modos
+ * de arte diferentes por causa disso.
+ *
+ * A lição não é o caminho novo, é que ele é INTERNO a um componente de
+ * terceiros. Então procuramos nos dois, na ordem em que eles apareceram na
+ * história, e um layout novo custa uma linha aqui em vez de uma tarde. */
+static const char *PASTAS[] = {
+    "firmware/build/mmap_build/assets/storage",
+    "firmware/build/mmap_build/assets/storage/.storage.bin.tmp",
+};
 
 struct mmap_assets_t {
     uint8_t *dados[ASSETS_MAX];
@@ -59,10 +74,16 @@ esp_err_t mmap_assets_new(const mmap_assets_config_t *config,
     if (!config || !handle) return ESP_FAIL;
 
     struct dirent **lista = NULL;
-    int n = scandir(PASTA, &lista, e_asset, alphasort);
-    if (n <= 0) {
-        printf("W (sim) %s: sem assets convertidos — rode `idf.py build` "
-               "em firmware/ se quiser ver o mascote de imagem\n", PASTA);
+    const char *pasta = NULL;
+    int n = 0;
+    for (size_t i = 0; i < sizeof(PASTAS) / sizeof(PASTAS[0]); i++) {
+        n = scandir(PASTAS[i], &lista, e_asset, alphasort);
+        if (n > 0) { pasta = PASTAS[i]; break; }
+        lista = NULL;
+    }
+    if (!pasta) {
+        printf("W (sim) sem assets convertidos em %s — rode `idf.py build` "
+               "em firmware/ se quiser ver o mascote de imagem\n", PASTAS[0]);
         return ESP_FAIL;
     }
 
@@ -71,7 +92,7 @@ esp_err_t mmap_assets_new(const mmap_assets_config_t *config,
 
     for (int i = 0; i < n && i < ASSETS_MAX; i++) {
         char caminho[512];
-        snprintf(caminho, sizeof(caminho), "%s/%s", PASTA, lista[i]->d_name);
+        snprintf(caminho, sizeof(caminho), "%s/%s", pasta, lista[i]->d_name);
         FILE *f = fopen(caminho, "rb");
         if (!f) continue;
         fseek(f, 0, SEEK_END);
@@ -87,7 +108,7 @@ esp_err_t mmap_assets_new(const mmap_assets_config_t *config,
     for (int i = 0; i < n; i++) free(lista[i]);
     free(lista);
 
-    printf("I (sim) %d assets lidos de %s\n", a->qtd, PASTA);
+    printf("I (sim) %d assets lidos de %s\n", a->qtd, pasta);
     *handle = a;
     return a->qtd > 0 ? ESP_OK : ESP_FAIL;
 }

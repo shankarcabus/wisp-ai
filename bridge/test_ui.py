@@ -1,5 +1,5 @@
 """
-O esquema de ajustes e a sua migração.
+O esquema de ajustes, a sua migração, e o leitor do formato antigo.
 
 Rode: python3 bridge/test_ui.py
 
@@ -91,6 +91,30 @@ def main():
     esperado = json.loads(json.dumps(PADRAO))
     esperado["character"] = "bytelo"
     checa("com os dois, o ui.json ganha", config.ui(), esperado)
+
+    # ── o leitor do formato antigo ──
+    #
+    # Ele existe só como migração — ui() cai nele quando não há ui.json — e por
+    # isso mora aqui e não num arquivo próprio: um segundo arquivo de teste
+    # recriava este mesmo arcabouço inteiro (sys.path, `falhas`, `checa`, o
+    # epílogo) para exercitar quatro linhas, e as duas cópias já tinham
+    # divergido no formato da saída.
+    print()
+    print("config.mascot()")
+    limpa()
+    checa("sem arquivo, devolve vazio", config.mascot(), "")
+
+    config.MASCOT_FILE.write_text("bytelo\n")
+    checa("le o nome publicado", config.mascot(), "bytelo")
+
+    config.MASCOT_FILE.write_text("  terminal  \n\n")
+    checa("tira espaco das duas pontas", config.mascot(), "terminal")
+
+    config.MASCOT_FILE.write_text("bytelo")
+    checa("aceita sem a quebra de linha", config.mascot(), "bytelo")
+
+    config.MASCOT_FILE.write_text("\n")
+    checa("arquivo so com quebra e vazio", config.mascot(), "")
 
     print()
     print("all passed" if not falhas else f"{falhas} falha(s)")

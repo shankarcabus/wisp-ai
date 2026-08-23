@@ -64,7 +64,14 @@ ESTADOS="idle working tool asking waiting done error offline"
     done
     echo "idioma en"
     echo "quit"
-} | "$SIM" --headless > "$OUT/folha.log" 2>&1 || true
+} > "$OUT/roteiro.txt"
+
+# O esperado sai do PRÓPRIO roteiro, contando os `shot`. Era uma constante à mão
+# ao lado do roteiro que a produz: acrescentar uma captura exigia editar dois
+# lugares, e esquecer o segundo dava "esperava 36 capturas" em vez do problema.
+ESPERADO=$(grep -c '^shot ' "$OUT/roteiro.txt")
+
+"$SIM" --headless < "$OUT/roteiro.txt" > "$OUT/folha.log" 2>&1 || true
 
 if grep -q "^E (sim)" "$OUT/folha.log"; then
     echo "ERROS na captura:" >&2
@@ -73,5 +80,12 @@ if grep -q "^E (sim)" "$OUT/folha.log"; then
 fi
 
 QTD=$(ls -1 "$OUT"/*.bmp 2>/dev/null | wc -l | tr -d ' ')
+if grep -q "sem assets convertidos" "$OUT/folha.log"; then
+    echo "AVISO: sem assets convertidos — o Terminal saiu no vetorial." >&2
+    echo "       Comparar esta folha com uma feita COM assets acusa 33 diferenças" >&2
+    echo "       que são só modo de arte. Rode \`idf.py build\` em firmware/." >&2
+fi
+
 echo "$QTD capturas de '$WISP_MASCOT' em $OUT"
-[[ "$QTD" -eq 36 ]] || { echo "esperava 36 capturas, saíram $QTD — veja $OUT/folha.log" >&2; exit 1; }
+[[ "$QTD" -eq "$ESPERADO" ]] || {
+    echo "esperava $ESPERADO capturas, saíram $QTD — veja $OUT/folha.log" >&2; exit 1; }

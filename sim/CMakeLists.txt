@@ -44,6 +44,7 @@ add_executable(wisp-sim
     relogio.c
     shim/esp_mmap_assets.c
     shim/esp_lv_decoder.c
+    ../firmware/main/desenho.c
     ../firmware/main/ui.c              # sem modificação de simulador
     ../firmware/main/mascote.c
     ../firmware/main/mascote_terminal.c

@@ -15,6 +15,8 @@
  * reintroduziria a dependência que o headless existe para cortar — e um BMP
  * são catorze bytes de cabeçalho de arquivo, quarenta de cabeçalho de imagem e
  * as linhas de baixo para cima. Não vale uma dependência. */
+/* Serve ao BMP e ao TIFF: os dois são little-endian, e havia um par
+ * idêntico destas duas funções sessenta linhas abaixo. */
 static void escrever_le32(FILE *f, uint32_t v)
 {
     fputc(v & 0xFF, f); fputc((v >> 8) & 0xFF, f);
@@ -84,27 +86,16 @@ bool captura_bmp(const char *caminho)
 /* ————————————————————————————————————————————————
  *  TIFF de 32 bits, para os sprites do app do Mac
  * ———————————————————————————————————————————————— */
-static void tif16(FILE *f, uint16_t v)
-{
-    fputc(v & 0xFF, f); fputc((v >> 8) & 0xFF, f);
-}
-
-static void tif32(FILE *f, uint32_t v)
-{
-    fputc(v & 0xFF, f); fputc((v >> 8) & 0xFF, f);
-    fputc((v >> 16) & 0xFF, f); fputc((v >> 24) & 0xFF, f);
-}
-
 /* Uma entrada de IFD: tag, tipo, quantidade, valor. Valor de 1 SHORT mora nos
  * dois primeiros bytes do campo de quatro; o resto vai zerado. */
 static void tif_entrada(FILE *f, uint16_t tag, uint16_t tipo,
                         uint32_t qtd, uint32_t valor)
 {
-    tif16(f, tag);
-    tif16(f, tipo);
-    tif32(f, qtd);
-    if (tipo == 3 && qtd == 1) { tif16(f, (uint16_t) valor); tif16(f, 0); }
-    else                        tif32(f, valor);
+    escrever_le16(f, tag);
+    escrever_le16(f, tipo);
+    escrever_le32(f, qtd);
+    if (tipo == 3 && qtd == 1) { escrever_le16(f, (uint16_t) valor); escrever_le16(f, 0); }
+    else                        escrever_le32(f, valor);
 }
 
 #define TIF_ENTRADAS 11
@@ -128,10 +119,10 @@ bool captura_tiff(const char *caminho, int x0, int y0, int w, int h)
     if (!f) { lv_draw_buf_destroy(buf); return false; }
 
     fputc('I', f); fputc('I', f);          /* little-endian */
-    tif16(f, 42);
-    tif32(f, TIF_IFD);
+    escrever_le16(f, 42);
+    escrever_le32(f, TIF_IFD);
 
-    tif16(f, TIF_ENTRADAS);
+    escrever_le16(f, TIF_ENTRADAS);
     /* As tags têm de sair em ordem crescente — é exigência do formato. */
     tif_entrada(f, 256, 4, 1, (uint32_t) w);            /* ImageWidth       */
     tif_entrada(f, 257, 4, 1, (uint32_t) h);            /* ImageLength      */
@@ -144,9 +135,9 @@ bool captura_tiff(const char *caminho, int x0, int y0, int w, int h)
     tif_entrada(f, 279, 4, 1, (uint32_t) (w * h * 4));  /* StripByteCounts  */
     tif_entrada(f, 284, 3, 1, 1);                       /* chunky           */
     tif_entrada(f, 338, 3, 1, 2);                       /* alfa não-associado */
-    tif32(f, 0);                                        /* fim da cadeia    */
+    escrever_le32(f, 0);                                        /* fim da cadeia    */
 
-    for (int i = 0; i < 4; i++) tif16(f, 8);            /* 8 bits por amostra */
+    for (int i = 0; i < 4; i++) escrever_le16(f, 8);            /* 8 bits por amostra */
 
     /* ARGB8888 do LVGL chega em memória como B,G,R,A; o TIFF quer R,G,B,A. */
     for (int y = 0; y < h; y++) {

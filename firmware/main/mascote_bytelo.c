@@ -77,8 +77,9 @@ static const char *TAG = "bytelo";
  * grande a 80% e não a 88%: com 88% a cara fica com 269px, o adorno vai para
  * fora dela e encosta no indicador de bateria do canto. Numa tela de 480px as
  * três coisas não cabem juntas, e quem cede é a cara. */
-static const uint8_t CARA_PCT[3] = {60, 72, 80};
-#define CARA(d, t) ((int16_t) ((int32_t) (d) * CARA_PCT[(t) < 3 ? (t) : 1] / 100))
+static const uint8_t CARA_PCT[WISP_TAM_QTD] = {60, 72, 80};
+/* Sem checagem de faixa: ui_configurar() valida uma vez, ao entrar. */
+#define CARA(d, t) ((int16_t) ((int32_t) (d) * CARA_PCT[t] / 100))
 
 /* Duas unidades de arte por degrau. Com três o canto ficava grosso e a
  * silhueta lia como cruz, não como quadrado arredondado. */
@@ -240,13 +241,11 @@ static void geometria(bytelo_t *p, int16_t d)
     lv_obj_set_size(p->sombra[1], esp, d - 2 * deg);
     lv_obj_align(p->sombra[1], LV_ALIGN_CENTER, meio - esp / 2, 0);
 
-    for (int i = 0; i < 2; i++) {
-        lv_obj_align(p->olho[i], LV_ALIGN_CENTER,
-                     (i ? 1 : -1) * U(d, 4), -U(d, 1));
-        lv_obj_set_size(p->cruz[i], U(d, 5), U(d, 2));
-        lv_obj_align(p->cruz[i], LV_ALIGN_CENTER,
-                     (i ? 1 : -1) * U(d, 4), -U(d, 1));
-    }
+    /* Olhos e cruzes NÃO entram aqui: o prólogo de aplicar_olho() põe os dois
+     * na posição e no tamanho neutros, e ele roda sempre, porque a linha acima
+     * acabou de invalidar `p_olho`. A versão anterior repetia esse trabalho
+     * aqui pela metade — sem o tamanho do olho — e meia cópia é o que apodrece
+     * primeiro. */
 }
 
 static void aplicar_olho(bytelo_t *p, olho_t o, int16_t d)
@@ -532,7 +531,7 @@ static void bytelo_criar(lv_obj_t *pai, mascote_t *m)
     lv_image_set_antialias(p->prop, false);
     lv_obj_add_flag(p->prop, LV_OBJ_FLAG_HIDDEN);
 
-    p->tam = 1;          /* médio até o layout dizer outra coisa */
+    p->tam = WISP_TAM_MEDIO;   /* até o layout dizer outra coisa */
     p->p_d = -1;
     p->p_olho = -1;
     p->p_prop = -1;
@@ -581,12 +580,13 @@ static void bytelo_animar(mascote_t *m, uint32_t agora, bool sozinho)
      * projeto já documenta que uma imagem inteira só precisa mudar quando o
      * estado muda. Se o corpo precisar de vida um dia, o caminho é mover um
      * objeto pequeno — não escalar o conjunto. */
-    (void) a;
 }
 
-static void bytelo_dispor(mascote_t *m, int16_t d, int16_t x, int16_t y,
-                          bool mostrar, uint8_t tamanho)
+static void bytelo_dispor(mascote_t *m, bool mostrar, const wisp_cfg_t *cfg)
 {
+    /* A vaga vem do próprio mascote: é o layout que acabou de escrevê-la. */
+    const int16_t d = m->d, x = m->x, y = m->y;
+    const uint8_t tamanho = cfg->tamanho;
     bytelo_t *p = m->interno;
     if (!p || !p->raiz) return;
 
@@ -627,9 +627,6 @@ const personagem_t MASCOTE_BYTELO = {
     /* Não usa a partição `storage`: a cara é desenhada, e os adornos que virão
      * moram no binário do app como arrays gerados em tempo de build. */
     .usa_assets = false,
-    /* Sem rótulos: a referência é uma cara sozinha no quadro, e texto embaixo
-     * dela some com o silêncio que faz o personagem funcionar. */
-    .rotulos    = false,
     .criar      = bytelo_criar,
     .animar     = bytelo_animar,
     .dispor     = bytelo_dispor,

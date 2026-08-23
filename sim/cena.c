@@ -1,7 +1,5 @@
 #include "cena.h"
 
-#include <SDL2/SDL.h>
-
 #include "captura.h"
 #include "mascote.h"
 #include "relogio.h"
@@ -108,13 +106,6 @@ void cena_init(void)
 #define SPRITE_X0   ((480 - SPRITE_LADO) / 2)
 #define SPRITE_Y0   (384 - SPRITE_LADO)
 
-static const char *ESTADOS_SPRITE[WISP_COUNT] = {
-    [WISP_IDLE] = "idle",       [WISP_WORKING] = "working",
-    [WISP_TOOL] = "tool",       [WISP_ASKING]  = "asking",
-    [WISP_WAITING] = "waiting", [WISP_DONE]    = "done",
-    [WISP_ERROR] = "error",     [WISP_OFFLINE] = "offline",
-};
-
 /* Deixa transparente (ou devolve) o fundo da tela, do tileview e dos dois
  * tiles. São eles que o ui_create() pinta de preto opaco, e sem isso o sprite
  * sai com um retângulo preto em volta do personagem.
@@ -140,12 +131,16 @@ static void exportar_sprite(const char *pasta)
         printf("W (sim) uso: sprite <pasta>\n");
         return;
     }
-    if (mascote_ativo()->rotulos) {
-        printf("W (sim) o personagem \"%s\" mostra rotulos, e eles entrariam no\n"
-               "        sprite. Exportacao serve a personagem desenhado, sem texto.\n",
-               mascote_ativo()->nome);
-        return;
-    }
+    /* Os rótulos saem DURANTE a exportação, e voltam depois — em vez de a
+     * exportação recusar personagem que os mostre.
+     *
+     * A primeira versão recusava, guardada por uma propriedade do personagem que
+     * depois deixou de existir. Recusar era a resposta errada de todo jeito: o
+     * que o sprite não pode ter é texto, e desligar o texto é uma linha. */
+    const wisp_cfg_t antes = *ui_ajustes();
+    wisp_cfg_t sem_texto = antes;
+    sem_texto.acao = sem_texto.projetos = false;
+    ui_configurar(&sem_texto);
 
     const int bat = d.battery_pct;
     d.battery_pct = -1;      /* ui.c trata -1 como "sem medida": rotulo vazio */
@@ -159,12 +154,13 @@ static void exportar_sprite(const char *pasta)
         for (int k = 0; k < ASSENTAR_MAX; k++) { relogio_avancar(); lv_timer_handler(); }
 
         char caminho[600];
-        snprintf(caminho, sizeof(caminho), "%s/%s.tiff", pasta, ESTADOS_SPRITE[e]);
+        snprintf(caminho, sizeof(caminho), "%s/%s.tiff", pasta, NOMES[e]);
         if (captura_tiff(caminho, SPRITE_X0, SPRITE_Y0, SPRITE_LADO, SPRITE_LADO)) ok++;
     }
 
     fundo_transparente(false);
     d.battery_pct = bat;
+    ui_configurar(&antes);
     ui_update(&d);
     printf("I (sim) %d/%d sprites de \"%s\" em %s\n",
            ok, WISP_COUNT, mascote_ativo()->nome, pasta);
@@ -178,8 +174,13 @@ void cena_ajuda(void)
            "          char <terminal|bytelo> | heap\n"
            "ajustes : acao <0|1> | proj <0|1> | idioma <en|pt>"
            " | tam <small|medium|large>\n"
-           "personagem: escolhido no boot — WISP_MASCOT=bytelo ./sim/build/wisp-sim\n"
-           "estados : idle working tool asking waiting done error offline\n");
+           "personagem: escolhido no boot — WISP_MASCOT=bytelo ./sim/build/wisp-sim\n");
+    /* Os nomes saem da MESMA tabela que o parser usa. Estavam escritos por
+     * extenso aqui, o que fazia a ajuda poder discordar do que o comando aceita
+     * — e a ajuda é onde alguém vai olhar quando o comando não funcionar. */
+    printf("estados : ");
+    for (int i = 0; i < WISP_COUNT; i++) printf("%s%s", i ? " " : "", NOMES[i]);
+    printf("\n");
 }
 
 const wisp_data_t *cena_atual(void) { return &d; }
@@ -234,13 +235,11 @@ void cena_comando(const char *linha)
         /* Quatro comandos e não um com quatro argumentos posicionais: posicional
          * se erra na terceira vez que se usa. O estado é estático porque
          * ui_configurar() recebe o conjunto inteiro, não o delta. */
-        static wisp_cfg_t c = {.acao = true, .projetos = true,
-                               .pt = false, .tamanho = 1};
+        static wisp_cfg_t c = WISP_CFG_PADRAO;
         if      (!strcmp(cmd, "acao"))   c.acao = (atoi(arg) != 0);
         else if (!strcmp(cmd, "proj"))   c.projetos = (atoi(arg) != 0);
         else if (!strcmp(cmd, "idioma")) c.pt = !strcmp(arg, "pt");
-        else                             c.tamanho = !strcmp(arg, "small") ? 0
-                                                   : (!strcmp(arg, "large") ? 2 : 1);
+        else                             c.tamanho = ui_tamanho_from_text(arg);
         ui_configurar(&c);
         ui_update(&d);
         return;

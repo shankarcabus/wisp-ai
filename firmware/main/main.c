@@ -53,7 +53,7 @@ static char s_mascote_rx[16] = {0};
 
 /* Ajustes de interface vindos do payload. Os padrões são o comportamento de
  * antes de eles existirem: uma placa cujo bridge é anterior a isto não muda. */
-static wisp_cfg_t s_cfg = {.acao = true, .projetos = true, .pt = false, .tamanho = 1};
+static wisp_cfg_t s_cfg = WISP_CFG_PADRAO;
 static char s_ip[16]   = {0};      /* resolvido por mDNS */
 static wisp_data_t s_dados;
 static esp_lcd_panel_handle_t s_painel = NULL;   /* guardado para rotacionar */
@@ -849,11 +849,8 @@ static bool interpretar(const char *json, wisp_data_t *d)
             s_cfg.projetos = cJSON_IsTrue(v);
         if (cJSON_IsString(v = cJSON_GetObjectItemCaseSensitive(cfg, "language")))
             s_cfg.pt = (strcmp(v->valuestring, "pt") == 0);
-        if (cJSON_IsString(v = cJSON_GetObjectItemCaseSensitive(cfg, "size"))) {
-            const char *tam = v->valuestring;
-            s_cfg.tamanho = !strcmp(tam, "small") ? 0
-                          : (!strcmp(tam, "large") ? 2 : 1);
-        }
+        if (cJSON_IsString(v = cJSON_GetObjectItemCaseSensitive(cfg, "size")))
+            s_cfg.tamanho = ui_tamanho_from_text(v->valuestring);
     }
 
     /* Uma sessao do Claude = um mascote. O bridge manda em "s", mais
@@ -941,25 +938,29 @@ static void aplicar_personagem(const char *nome)
 {
     if (!nome || !*nome) return;
 
-    static char ultimo[16] = {0};
-    if (strcmp(ultimo, nome) == 0) return;   /* nada mudou desde o último poll */
+    /* UM portão, no personagem RESOLVIDO.
+     *
+     * A primeira versão perguntava "mudou?" três vezes: um `static char ultimo`,
+     * a saída antecipada de ui_personagem(), e a releitura da NVS antes de
+     * gravar. O ponteiro do personagem ativo já é a resposta, e o boot está
+     * coberto porque escolher_personagem() o semeou da mesma chave.
+     *
+     * mascote_por_nome() normaliza, então nome desconhecido não fica em laço
+     * tentando trocar. */
+    const personagem_t *p = mascote_por_nome(nome);
+    if (p == mascote_ativo()) return;
 
-    ui_personagem(nome);
+    ui_personagem(p->nome);
 
+    /* Grava o nome NORMALIZADO, não o texto cru do payload. */
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
-        char gravado[16] = {0};
-        size_t n = sizeof(gravado);
-        if (nvs_get_str(h, "mascot", gravado, &n) != ESP_OK) gravado[0] = '\0';
-        if (strcmp(gravado, nome) != 0) {
-            if (nvs_set_str(h, "mascot", nome) == ESP_OK && nvs_commit(h) == ESP_OK)
-                ESP_LOGI(TAG, "personagem \"%s\" gravado na NVS", nome);
-            else
-                ESP_LOGW(TAG, "nao consegui gravar o personagem na NVS");
-        }
+        if (nvs_set_str(h, "mascot", p->nome) == ESP_OK && nvs_commit(h) == ESP_OK)
+            ESP_LOGI(TAG, "personagem \"%s\" gravado na NVS", p->nome);
+        else
+            ESP_LOGW(TAG, "nao consegui gravar o personagem na NVS");
         nvs_close(h);
     }
-    snprintf(ultimo, sizeof(ultimo), "%s", nome);
 }
 
 static void tarefa_rede(void *arg)

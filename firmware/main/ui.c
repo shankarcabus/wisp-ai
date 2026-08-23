@@ -13,10 +13,10 @@
 
 #include <string.h>
 #include <stdio.h>
-#include <math.h>
 #include "esp_log.h"
 #include "lvgl.h"
 #include "bsp/esp-bsp.h"
+#include "desenho.h"
 #include "mascote.h"
 #include "ui.h"
 
@@ -90,38 +90,6 @@ static uint32_t g_refrescos, g_ultima_medida;
  * o painel de limites. Como a tela e coberta por corpos, olhos e luzes,
  * bastava um deles clicavel para o deslize morrer. Tudo que e decoracao
  * passa por aqui. */
-void so_decoracao(lv_obj_t *o)
-{
-    lv_obj_remove_flag(o, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_remove_flag(o, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_flag(o, LV_OBJ_FLAG_EVENT_BUBBLE);   /* gesto sobe para o pai */
-}
-
-lv_obj_t *disco(lv_obj_t *pai, int d, lv_color_t cor, int x, int y)
-{
-    lv_obj_t *o = lv_obj_create(pai);
-    lv_obj_set_size(o, d, d);
-    lv_obj_set_style_radius(o, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_border_width(o, 0, 0);
-    lv_obj_set_style_bg_color(o, cor, 0);
-    lv_obj_set_style_pad_all(o, 0, 0);
-    so_decoracao(o);
-    lv_obj_align(o, LV_ALIGN_CENTER, x, y);
-    return o;
-}
-
-lv_obj_t *barra(lv_obj_t *pai, int w, int h, lv_color_t cor, int x, int y)
-{
-    lv_obj_t *o = lv_obj_create(pai);
-    lv_obj_set_size(o, w, h);
-    lv_obj_set_style_radius(o, h < w ? h / 2 : w / 2, 0);
-    lv_obj_set_style_border_width(o, 0, 0);
-    lv_obj_set_style_bg_color(o, cor, 0);
-    lv_obj_set_style_pad_all(o, 0, 0);
-    so_decoracao(o);
-    lv_obj_align(o, LV_ALIGN_CENTER, x, y);
-    return o;
-}
 
 static void nuvem(lv_obj_t *p, int dx, int dy, lv_color_t c)
 {
@@ -216,7 +184,7 @@ static const char *NOME_PT[WISP_COUNT] = {
 };
 
 /* Os ajustes em vigor. Os padrões são o comportamento de antes de haver ajuste. */
-static wisp_cfg_t g_cfg = {.acao = true, .projetos = true, .pt = false, .tamanho = 1};
+static wisp_cfg_t g_cfg = WISP_CFG_PADRAO;
 
 typedef struct { int16_t d, x, y; const lv_font_t *f_det, *f_proj; } vaga_t;
 
@@ -261,26 +229,21 @@ static void aplicar_layout(int total)
         mascote_t *m = &g_m[i];
         bool ativo = i < total;
 
-        /* O ajuste MANDA, sem veto do personagem.
+        /* O ajuste é o ÚNICO dono. Não há veto do personagem, e não há mais
+         * semente vinda dele.
          *
-         * A primeira versão disto era `sugere && g_cfg.acao`, com `sugere` sendo
-         * o `rotulos` do personagem — e isso transformava a sugestão em veto: com
-         * o Bytelo, que tem `rotulos = false` porque a composição dele é uma cara
-         * sozinha, os dois toggles do painel não faziam absolutamente nada. Quem
-         * marca uma caixa espera que ela funcione.
-         *
-         * O `rotulos` do personagem continua valendo, mas como valor INICIAL:
-         * ui_create() o copia para g_cfg. Depois disso quem manda é o painel. */
+         * Houve as duas coisas. Primeiro `rotulos && g_cfg.acao`, que virava
+         * veto — com o Bytelo os toggles do painel não faziam nada. Depois
+         * `rotulos` como valor inicial copiado em ui_create(), o que soava melhor
+         * e não era: o bridge manda a seção `board` INTEIRA a cada payload, com
+         * todas as chaves preenchidas pelo config.py, então o valor do personagem
+         * governava só a janela entre o boot e o primeiro poll — onde produzia um
+         * piscar visível — e a troca de personagem em runtime nunca o reaplicava.
+         * Dois donos de um padrão, um deles com um segundo de vida. */
         const bool ver_acao = ativo && g_cfg.acao;
         const bool ver_proj = ativo && g_cfg.projetos;
-        if (m->detail) {
-            if (ver_acao) lv_obj_remove_flag(m->detail, LV_OBJ_FLAG_HIDDEN);
-            else          lv_obj_add_flag(m->detail, LV_OBJ_FLAG_HIDDEN);
-        }
-        if (m->project) {
-            if (ver_proj) lv_obj_remove_flag(m->project, LV_OBJ_FLAG_HIDDEN);
-            else          lv_obj_add_flag(m->project, LV_OBJ_FLAG_HIDDEN);
-        }
+        if (m->detail)  lv_obj_set_flag(m->detail,  LV_OBJ_FLAG_HIDDEN, !ver_acao);
+        if (m->project) lv_obj_set_flag(m->project, LV_OBJ_FLAG_HIDDEN, !ver_proj);
 
         vaga_t v; vaga_de(total, i, &v);
 
@@ -297,7 +260,34 @@ static void aplicar_layout(int total)
          * para o que orbita o corpo, e chamar vaga_de() de lá seria o layout
          * atravessando a fronteira na direção errada. */
         m->d = v.d; m->x = v.x; m->y = cy;
-        mascote_ativo()->dispor(m, v.d, v.x, cy, ativo, g_cfg.tamanho);
+        /* CRIAÇÃO PREGUIÇOSA.
+         *
+         * A vaga ganha corpo quando entra em cena, e não no boot. `ui_update()`
+         * fixa uma sessão (ver a nota lá), então as vagas 1 a 3 nunca ficavam
+         * ativas e ainda assim carregavam de 17 a 20 objetos LVGL cada uma pela
+         * vida do firmware — medido no simulador, 17KB com o Terminal e 14KB com
+         * o Bytelo, o que na placa de 32 bits são uns 10 a 12KB. Numa placa sem
+         * PSRAM, com o buffer parcial já limitado pela disputa com o WiFi, isso
+         * é material.
+         *
+         * Preguiçoso e não `if (i == 0)`: a porta de vários mascotes fica aberta
+         * de graça, e quem decide quantos é o layout, não a construção. */
+        if (ativo && !m->interno) {
+            mascote_ativo()->criar(g_telas[0], m);
+            /* O mascote é o FUNDO, e agora isso é dito em vez de herdado.
+             *
+             * Antes os quatro nasciam no ui_create(), antes da bateria e dos
+             * rótulos, então a ordem de criação punha o texto por cima sem que
+             * ninguém escrevesse isso. Com a criação preguiçosa o mascote passa a
+             * nascer por último e cobria os dois — visível no degrau grande, onde
+             * o corpo alcança o canto da bateria. Depender de ordem de criação
+             * para uma regra de composição é o tipo de coisa que quebra na
+             * primeira vez que a construção muda, e mudou. */
+            if (m->detail)  lv_obj_move_foreground(m->detail);
+            if (m->project) lv_obj_move_foreground(m->project);
+            if (g_bateria)  lv_obj_move_foreground(g_bateria);
+        }
+        mascote_ativo()->dispor(m, ativo, &g_cfg);
         if (!ativo) continue;
 
     lv_obj_set_style_text_font(m->detail, v.f_det, 0);
@@ -322,6 +312,8 @@ static void aplicar_layout(int total)
     }
 }
 
+const wisp_cfg_t *ui_ajustes(void) { return &g_cfg; }
+
 void ui_configurar(const wisp_cfg_t *c)
 {
     if (!c) return;
@@ -330,6 +322,11 @@ void ui_configurar(const wisp_cfg_t *c)
 
     bsp_display_lock(-1);
     g_cfg = *c;
+    /* Validado AQUI, uma vez. Antes cada personagem repetia o próprio
+     * `tamanho < 3 ? tamanho : 1`, o que é a mesma regra escrita em dois lugares
+     * para atravessar uma fronteira que podia simplesmente não deixar passar
+     * valor inválido. */
+    if (g_cfg.tamanho >= WISP_TAM_QTD) g_cfg.tamanho = WISP_TAM_MEDIO;
     /* Reaplicar o layout é o que faz os rótulos aparecerem ou sumirem, o mascote
      * recentrar e o tamanho valer. O idioma entra no ui_update() que vem logo
      * depois, quando o texto é reescrito. */
@@ -354,13 +351,12 @@ void ui_personagem(const char *nome)
         if (mascote_ativo()->destruir) mascote_ativo()->destruir(&g_m[i]);
 
     mascote_escolher(novo);
-
-    for (int i = 0; i < WISP_MAX_SESSIONS; i++)
-        novo->criar(g_telas[0], &g_m[i]);
+    /* Não cria aqui: quem cria é aplicar_layout(), quando a vaga entrar em cena.
+     * O g_qtd = -1 abaixo é o que o faz rodar. */
 
     /* Os rótulos NÃO são recriados: pertencem ao layout e sobreviveram à troca.
      * O que muda é aparecerem ou não, e disso quem cuida é aplicar_layout(),
-     * pela propriedade `rotulos` do personagem.
+     * pelos ajustes em vigor.
      *
      * g_qtd = -1 é o idioma que este arquivo já usa para "reaplique o layout na
      * próxima atualização" — ver o bloco de repouso em ui_update(). */
@@ -368,6 +364,14 @@ void ui_personagem(const char *nome)
 
     bsp_display_unlock();
     ESP_LOGI(TAG, "personagem trocado para %s", novo->nome);
+}
+
+uint8_t ui_tamanho_from_text(const char *s)
+{
+    if (!s) return WISP_TAM_MEDIO;
+    if (!strcmp(s, "small")) return WISP_TAM_PEQUENO;
+    if (!strcmp(s, "large")) return WISP_TAM_GRANDE;
+    return WISP_TAM_MEDIO;
 }
 
 wisp_state_t ui_state_from_text(const char *s)
@@ -673,15 +677,10 @@ void ui_create(void)
     }
     criar_painel(g_tile_painel);
 
-    /* Semeia os ajustes com o padrão do personagem: uma placa que nunca receba
-     * a chave `ui` — bridge antigo, ou o instante antes do primeiro payload —
-     * se comporta como o personagem pede. Depois disso o painel manda. */
-    g_cfg.acao = g_cfg.projetos = mascote_ativo()->rotulos;
-
-    for (int i = 0; i < WISP_MAX_SESSIONS; i++) {
-        mascote_ativo()->criar(tela, &g_m[i]);
-        criar_rotulos(tela, &g_m[i]);
-    }
+    /* Só os RÓTULOS nascem para as quatro vagas: são dois labels por vaga e
+     * carregam o estado inicial que o layout lê. O personagem nasce quando a
+     * vaga entra em cena — ver aplicar_layout(). */
+    for (int i = 0; i < WISP_MAX_SESSIONS; i++) criar_rotulos(tela, &g_m[i]);
 
 
     /* —— bateria ——
@@ -862,7 +861,7 @@ void ui_update(const wisp_data_t *d)
                  * que já pegou o rodapé antes delas. Os rótulos são do layout,
                  * então saem daqui. */
                 mascote_t *m = &g_m[i];
-                mascote_ativo()->dispor(m, m->d, m->x, m->y, false, g_cfg.tamanho);
+                mascote_ativo()->dispor(m, false, &g_cfg);
                 lv_obj_t *rot[] = {m->detail, m->project};
                 for (size_t k = 0; k < 2; k++)
                     if (rot[k]) lv_obj_add_flag(rot[k], LV_OBJ_FLAG_HIDDEN);
