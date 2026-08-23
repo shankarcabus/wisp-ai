@@ -8,7 +8,7 @@ if("${IDF_TARGET}" STREQUAL "esp32c6")
 endif()
 
 idf_component_register(
-    SRCS "main.c" "ui.c" "pmic.c"
+    SRCS "main.c" "ui.c" "mascote_terminal.c" "pmic.c"
     INCLUDE_DIRS "."
     REQUIRES ${reqs}
 )

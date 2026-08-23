@@ -1027,6 +1027,40 @@ git commit -m "Separate the character from the layout, with the Terminal unchang
 
 ---
 
+## Task 4 — FEITA. Uma armadilha que a comparação revelou
+
+A extração está provada: `ui.c` caiu de 1654 para 1026 linhas, o Terminal saiu
+para `mascote_terminal.c` com 743, e as 27 capturas do `ui.c` **antigo** contra
+as do refatorado, com os mesmos assets, deram **zero diferenças**.
+
+Duas correções em relação ao plano escrito abaixo:
+
+- **`NOME[]` não é do personagem.** É o texto que aparece no rótulo quando o
+  bridge não manda detalhe ("thinking", "working", "offline"). Ficou em `ui.c`.
+- **As interrogações do estado `asking` são do personagem**, e vieram inteiras
+  para cá — objetos, criação e animação. Os dois lugares onde o layout as
+  escondia passaram a ser `dispor(..., mostrar=false)`, que já significa
+  "esconde tudo o que é do personagem".
+
+E a armadilha, que custou uma investigação inteira:
+
+> **`rm -rf build` invalida a folha de referência.** A comparação byte a byte
+> só vale entre capturas feitas com o MESMO `mmap_build`. Ao recompilar para as
+> duas placas, 24 das 27 imagens mudaram — todas as que mostram o mascote — e
+> parecia regressão da refatoração.
+>
+> Não era. O `mmap_build` que gerou a referência era de 20 de agosto e os PNGs
+> em `firmware/assets/` são de 21: a referência mostrava **arte anterior à que
+> está no repositório**. A prova veio de compilar um simulador com o `ui.c` de
+> `git show HEAD:` contra os assets novos — zero diferenças contra o
+> refatorado.
+>
+> Regra prática: gere a referência, refatore e compare **sem** recompilar o
+> firmware no meio. Se precisar recompilar, gere a referência de novo depois e
+> só então compare.
+
+---
+
 ### Task 5: O personagem pixel — silhueta e olhos
 
 Primeira metade do personagem novo: o corpo e os olhos, nos oito estados. Sem sobrancelha, sem boca, sem props — isso é a Task 6 e a Task 7. Ao fim desta task o personagem já é escolhível no simulador e já se distingue `idle` de `offline`.
