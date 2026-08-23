@@ -2008,6 +2008,30 @@ git commit -m "Record what the pixel character costs on the C6"
 
 ---
 
+## Todas as 9 tasks feitas — o que a execução ensinou
+
+Feito e verificado, em 23 de agosto de 2026:
+
+| task | como ficou verificada |
+|---|---|
+| 1–3 simulador | `ui.c` compila no host sem modificação; 27 capturas × 2 execuções, zero diferenças |
+| 4 extração | 27 capturas do `ui.c` antigo contra o refatorado, mesmos assets, zero diferenças. As duas placas compilam. **Roda na placa**: FPS 1 com arte de imagem, que é o valor documentado |
+| 5–7 personagem | oito estados distinguíveis, as 64 transições exercitadas, adornos gerados de mapas ASCII |
+| 8 seleção | os três caminhos — nome válido, nome inválido, ausente — verificados no host; a chave lida no boot na placa |
+| 9 medição | **na placa**: 1–5 FPS, 72KB de heap interno livre, 24KB de mínimo, zero watchdog. Números em `firmware/README.md` |
+
+As correções que só a execução podia dar:
+
+- **O `rm -rf build` invalida a folha de referência.** A comparação byte a byte só vale entre capturas do mesmo `mmap_build`. Ver a nota da Task 4.
+- **A placa desenha um mascote, sempre, a 306px.** Isso apagou metade das complicações do desenho — sem limiar de props, sem escala inteira, sem contagem de objetos vezes quatro.
+- **Transformar contêiner trava a placa.** A medição da Task 9 pegou; compilar nunca pegaria. O firmware subia limpo e não desenhava um quadro. Está na tabela de armadilhas do `CLAUDE.md`.
+- **Os 4,7KB de RAM mínima que eu citava como teto eram de uma configuração antiga.** A folga real é 24KB no pior caso — uma ordem de grandeza a mais, e é ela que tornou dezessete objetos por mascote viáveis.
+- **O simulador precisou de relógio virtual, headless e nenhum indev de mouse** para ser determinístico. Sem os três não há folha de contato que sirva de regressão.
+
+O que ficou de fora, por escolha e anotado: o personagem no app do Mac, o canal de configuração em runtime pela bridge (hoje trocar de personagem exige reprovisionar), e o refino dos seis adornos, que são rascunhos em `firmware/props/`.
+
+---
+
 ## Notas de execução
 
 **A ordem não é sugestão.** As tasks 1 a 3 constroem a rede de proteção que a Task 4 usa. Fazer a Task 4 antes é possível e é como se perde a única prova de que o Terminal não mudou.
