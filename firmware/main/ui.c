@@ -261,15 +261,18 @@ static void aplicar_layout(int total)
         mascote_t *m = &g_m[i];
         bool ativo = i < total;
 
-        /* O personagem SUGERE, o ajuste MANDA. Um personagem cuja composição é
-         * uma cara sozinha no quadro (`rotulos` false) some com os dois por
-         * padrão; quem quiser um deles de volta pede no painel.
+        /* O ajuste MANDA, sem veto do personagem.
          *
-         * Dois independentes, e não um: eles já são dois objetos, e querer a
-         * ação sem a lista de projetos é pedido legítimo. */
-        const bool sugere = mascote_ativo()->rotulos;
-        const bool ver_acao = ativo && sugere && g_cfg.acao;
-        const bool ver_proj = ativo && sugere && g_cfg.projetos;
+         * A primeira versão disto era `sugere && g_cfg.acao`, com `sugere` sendo
+         * o `rotulos` do personagem — e isso transformava a sugestão em veto: com
+         * o Bytelo, que tem `rotulos = false` porque a composição dele é uma cara
+         * sozinha, os dois toggles do painel não faziam absolutamente nada. Quem
+         * marca uma caixa espera que ela funcione.
+         *
+         * O `rotulos` do personagem continua valendo, mas como valor INICIAL:
+         * ui_create() o copia para g_cfg. Depois disso quem manda é o painel. */
+        const bool ver_acao = ativo && g_cfg.acao;
+        const bool ver_proj = ativo && g_cfg.projetos;
         if (m->detail) {
             if (ver_acao) lv_obj_remove_flag(m->detail, LV_OBJ_FLAG_HIDDEN);
             else          lv_obj_add_flag(m->detail, LV_OBJ_FLAG_HIDDEN);
@@ -669,6 +672,11 @@ void ui_create(void)
         lv_obj_remove_flag(tiles[i], LV_OBJ_FLAG_SCROLLABLE);
     }
     criar_painel(g_tile_painel);
+
+    /* Semeia os ajustes com o padrão do personagem: uma placa que nunca receba
+     * a chave `ui` — bridge antigo, ou o instante antes do primeiro payload —
+     * se comporta como o personagem pede. Depois disso o painel manda. */
+    g_cfg.acao = g_cfg.projetos = mascote_ativo()->rotulos;
 
     for (int i = 0; i < WISP_MAX_SESSIONS; i++) {
         mascote_ativo()->criar(tela, &g_m[i]);

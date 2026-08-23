@@ -53,8 +53,10 @@ typedef struct {
      * execução e a lista de projetos, então sem eles a tela diz o ESTADO e não
      * diz qual sessão.
      *
-     * É o PADRÃO do personagem, não a decisão final: os ajustes do painel
-     * sobrepõem. Existe para um personagem novo não nascer sem opinião. */
+     * É o VALOR INICIAL, não um veto: o ui_create() o copia para os ajustes em
+     * vigor, e a partir do primeiro payload quem manda é o painel. Já foi veto
+     * uma vez, e o efeito era que os toggles não funcionavam com um personagem
+     * que sugerisse esconder. */
     bool        rotulos;
 
     /* Uma vez por mascote, na construção da tela. */

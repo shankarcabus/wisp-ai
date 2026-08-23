@@ -106,6 +106,19 @@ struct SessionRow: View {
 /// Sem rótulo por estado — oito palavras em 300px de largura viram ruído, e o que
 /// se quer aqui é reconhecer a cara. O nome vem no tooltip.
 struct Galeria: View {
+    /// O nome do personagem. Não é usado no corpo — é usado por EXISTIR.
+    ///
+    /// Sem nenhuma propriedade, esta View é sempre o mesmo valor, e o SwiftUI
+    /// pode não reavaliar o corpo dela quando o resto do painel muda. O
+    /// resultado é uma fileira congelada nas imagens carregadas quando o painel
+    /// abriu: trocar de personagem no seletor mudava o mascote do cabeçalho, que
+    /// depende do `bridge` observado, e não mudava a galeria.
+    ///
+    /// Passar o nome dá à View uma identidade que muda junto com a escolha, e é
+    /// isso que faz o corpo ser reavaliado e o `Sprites.image` ser consultado de
+    /// novo — com o cache já limpo pelo setter de `Sprites.chosen`.
+    let personagem: String
+
     var body: some View {
         // A conta do lado: o painel tem 300px e a Mascot ocupa `side * 1.2` de
         // largura (o quadro externo do SpriteMascot). Oito delas com 3px de
@@ -341,7 +354,7 @@ struct Panel: View {
             SectionHeader(title: "Mascot")
                 .padding(.top, 2)
 
-            Galeria()
+            Galeria(personagem: character)
 
             if !Sprites.available().isEmpty {
                 Picker("Character", selection: $character) {
