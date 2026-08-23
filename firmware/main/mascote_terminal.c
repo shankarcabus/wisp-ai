@@ -195,6 +195,7 @@ typedef struct {
     lv_obj_t *moldura, *luz, *scan[2], *topo;  /* profundidade */
     lv_obj_t *foto;          /* mascote de imagem; NULL = desenhado */
     int16_t p_boca, p_esc;   /* guardas do rosto: estado e escala */
+    uint8_t p_escala;        /* guarda da escala da FOTO, em % */
     /* Pontos da sobrancelha. lv_line guarda o PONTEIRO, nao copia — se este
      * array sair de escopo, o LVGL desenha lixo. Por isso vive aqui. */
     lv_point_precise_t sob_pts[2][2];
@@ -443,7 +444,7 @@ static void terminal_animar(mascote_t *m, uint32_t agora, bool sozinho)
  * Saiu de aplicar_layout() em ui.c. O que ficou lá: a vaga, os rótulos e as
  * outras telas. O que veio para cá: tudo o que tem forma de computador. */
 static void terminal_dispor(mascote_t *m, int16_t d, int16_t x, int16_t y,
-                            bool mostrar)
+                            bool mostrar, uint8_t tamanho)
 {
     terminal_t *T = m->interno;
     if (!T) return;
@@ -462,6 +463,29 @@ static void terminal_dispor(mascote_t *m, int16_t d, int16_t x, int16_t y,
         if (g_interrog[k]) lv_obj_add_flag(g_interrog[k], LV_OBJ_FLAG_HIDDEN);
     if (!mostrar) return;
 
+    /* O DEGRAU DE TAMANHO VALE NOS DOIS CAMINHOS.
+     *
+     * Este personagem tem duas renderizações — a foto mapeada da partição e o
+     * desenho vetorial de fallback — e o ajuste tem de valer nas duas, senão ele
+     * funciona ou não dependendo de a partição de assets ter montado, o que é
+     * invisível para quem escolheu.
+     *
+     * Mas eles escalam de formas DIFERENTES:
+     *
+     *   vetorial  encolhe o `d`, e as partes são todas fração dele. Barato:
+     *             objeto redimensionado, nenhuma transformação.
+     *   foto      NÃO pode encolher o objeto. O ui.c registra que a arte tem
+     *             exatamente 306px e que imagem MAIOR que o objeto sai CORTADA,
+     *             não reduzida — um pedaço de computador não é um computador
+     *             menor. Escalar exige lv_image_set_scale, que transforma por
+     *             software: a conta que travou esta placa uma vez foram 93.636
+     *             pixels a ~0,76 µs. Aceitável aqui e só aqui porque `dispor`
+     *             roda na mudança de layout ou de ajuste, nunca por quadro, e a
+     *             guarda `p_escala` é o que faz "nunca" ser verdade. */
+    static const uint8_t PCT[3] = {70, 100, 118};
+    const uint8_t pct = PCT[tamanho < 3 ? tamanho : 1];
+    const int16_t dv = (int16_t) ((int32_t) d * pct / 100);
+
     /* Com foto, o boneco desenhado inteiro sai de cena. Deixar os dois
      * visíveis não daria um híbrido, daria olhos flutuando sobre a imagem. */
     if (T->foto) {
@@ -471,23 +495,28 @@ static void terminal_dispor(mascote_t *m, int16_t d, int16_t x, int16_t y,
             lv_obj_add_flag(desenho[k], LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_size(T->foto, d, d);
         lv_obj_align(T->foto, LV_ALIGN_CENTER, x, y);
+        if (T->p_escala != pct) {
+            T->p_escala = pct;
+            lv_image_set_scale(T->foto, 256 * pct / 100);
+        }
+
     }
 
     /* Carcaça: quadrada com cantos generosos — o Macintosh original.
      * A tela ocupa 70% dela e fica deslocada para cima, deixando embaixo a
      * faixa onde ficaria o drive de disquete. */
-    lv_obj_set_size(T->corpo, d, d);
-    lv_obj_set_style_radius(T->corpo, d * 22 / 100, 0);
+    lv_obj_set_size(T->corpo, dv, dv);
+    lv_obj_set_style_radius(T->corpo, dv * 22 / 100, 0);
     lv_obj_align(T->corpo, LV_ALIGN_CENTER, x, y);
 
-    int16_t td = d * 70 / 100, th = td * 82 / 100;
-    int16_t ty = -d * 6 / 100, tr = td * 12 / 100;
+    int16_t td = dv * 70 / 100, th = td * 82 / 100;
+    int16_t ty = -dv * 6 / 100, tr = td * 12 / 100;
 
     /* Moldura 4% maior que a tela e 2% mais baixa: a sobra aparece só em cima,
      * que é onde a sombra de um vão afundado cai. */
-    lv_obj_set_size(T->moldura, td + d * 5 / 100, th + d * 5 / 100);
-    lv_obj_set_style_radius(T->moldura, tr + d * 2 / 100, 0);
-    lv_obj_align(T->moldura, LV_ALIGN_CENTER, 0, ty - d * 1 / 100);
+    lv_obj_set_size(T->moldura, td + dv * 5 / 100, th + dv * 5 / 100);
+    lv_obj_set_style_radius(T->moldura, tr + dv * 2 / 100, 0);
+    lv_obj_align(T->moldura, LV_ALIGN_CENTER, 0, ty - dv * 1 / 100);
 
     lv_obj_set_size(T->tela, td, th);
     lv_obj_set_style_radius(T->tela, tr, 0);
@@ -498,7 +527,7 @@ static void terminal_dispor(mascote_t *m, int16_t d, int16_t x, int16_t y,
     lv_obj_set_style_radius(T->luz, tr, 0);
     lv_obj_align(T->luz, LV_ALIGN_TOP_MID, 0, 0);
 
-    int16_t sh = d / 90; if (sh < 1) sh = 1;
+    int16_t sh = dv / 90; if (sh < 1) sh = 1;
     for (int i = 0; i < 2; i++) {
         lv_obj_set_size(T->scan[i], td, sh);
         lv_obj_align(T->scan[i], LV_ALIGN_CENTER, 0,
@@ -506,19 +535,19 @@ static void terminal_dispor(mascote_t *m, int16_t d, int16_t x, int16_t y,
     }
 
     /* Faixa de luz no topo da carcaça, acompanhando o arredondamento. */
-    lv_obj_set_size(T->topo, d * 72 / 100, d * 26 / 100);
-    lv_obj_set_style_radius(T->topo, d * 13 / 100, 0);
-    lv_obj_align(T->topo, LV_ALIGN_TOP_MID, 0, d * 4 / 100);
+    lv_obj_set_size(T->topo, dv * 72 / 100, dv * 26 / 100);
+    lv_obj_set_style_radius(T->topo, dv * 13 / 100, 0);
+    lv_obj_align(T->topo, LV_ALIGN_TOP_MID, 0, dv * 4 / 100);
 
     /* Braços: menores, mais baixos e da cor da SOMBRA da carcaça. Antes eram
      * claros e do tamanho de asas — pareciam algodão colado. */
-    int16_t bl = d * 10 / 100, bh = d * 20 / 100;
+    int16_t bl = dv * 10 / 100, bh = dv * 20 / 100;
     for (int b = 0; b < 2; b++) {
         lv_obj_set_size(T->braco[b], bl, bh);
         lv_obj_set_style_radius(T->braco[b], bl / 2, 0);
         lv_obj_align(T->braco[b], LV_ALIGN_CENTER,
-                     x + (b == 0 ? -1 : 1) * (d / 2 + bl / 4),
-                     y + d * 22 / 100);
+                     x + (b == 0 ? -1 : 1) * (dv / 2 + bl / 4),
+                     y + dv * 22 / 100);
     }
 
     T->p_alt = -1;   /* força reposicionar os olhos na nova escala */

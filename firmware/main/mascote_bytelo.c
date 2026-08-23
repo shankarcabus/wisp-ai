@@ -70,8 +70,15 @@ static const char *TAG = "bytelo";
  *
  * Nada disso toca em vaga_de(): a vaga continua sendo `d`, o contêiner continua
  * `d` por `d`, e quem escolhe desenhar menor dentro dele é o personagem. */
-#define CARA_PCT 72
-#define CARA(d)  ((int16_t) ((int32_t) (d) * CARA_PCT / 100))
+/* O que cada degrau significa PARA ESTA CARA. O médio é 72%, que é o que
+ * existia antes de haver ajuste, para quem nunca mexer não ver diferença.
+ *
+ * A margem que sobra é onde os adornos moram, e é ela que limita o degrau
+ * grande a 80% e não a 88%: com 88% a cara fica com 269px, o adorno vai para
+ * fora dela e encosta no indicador de bateria do canto. Numa tela de 480px as
+ * três coisas não cabem juntas, e quem cede é a cara. */
+static const uint8_t CARA_PCT[3] = {60, 72, 80};
+#define CARA(d, t) ((int16_t) ((int32_t) (d) * CARA_PCT[(t) < 3 ? (t) : 1] / 100))
 
 /* Duas unidades de arte por degrau. Com três o canto ficava grosso e a
  * silhueta lia como cruz, não como quadrado arredondado. */
@@ -112,11 +119,11 @@ static const bytelo_alvo_t ALVO[WISP_COUNT] = {
      * folha de referência, e baixos o bastante para não encostar no indicador
      * de bateria, que vive no canto superior direito. O laptop e as mãos são
      * diferentes — o personagem os SEGURA, então sobrepõem o queixo. */
-    [WISP_WORKING] = {OLHO_NORMAL, BOCA_NENHUMA, PROP_BOLHA,     13, -12, false, true },
+    [WISP_WORKING] = {OLHO_NORMAL, BOCA_NENHUMA, PROP_BOLHA,     13, -11, false, true },
     [WISP_TOOL]    = {OLHO_NORMAL, BOCA_NENHUMA, PROP_LAPTOP,     0,   8, false, true },
-    [WISP_ASKING]  = {OLHO_NORMAL, BOCA_NENHUMA, PROP_PERGUNTA,  13, -12, false, true },
+    [WISP_ASKING]  = {OLHO_NORMAL, BOCA_NENHUMA, PROP_PERGUNTA,  13, -11, false, true },
     [WISP_WAITING] = {OLHO_TRISTE, BOCA_NENHUMA, PROP_MAOS,       0,   9, true,  true },
-    [WISP_DONE]    = {OLHO_ARCO,   BOCA_ABERTA,  PROP_FAISCAS,   13, -12, false, false},
+    [WISP_DONE]    = {OLHO_ARCO,   BOCA_ABERTA,  PROP_FAISCAS,   13, -11, false, false},
     [WISP_ERROR]   = {OLHO_TRISTE, BOCA_TRISTE,  PROP_NENHUM,     0,   0, true,  false},
     [WISP_OFFLINE] = {OLHO_X,      BOCA_NENHUMA, PROP_WIFI,       0, -15, false, false},
 };
@@ -135,6 +142,10 @@ typedef struct {
      * global, porque há um bloco privado por mascote e um global serviria a um
      * só — mesmo que hoje só exista um em cena. */
     lv_obj_t *raiz;
+    /* O degrau em vigor. Guardado aqui porque `animar` não o recebe na
+     * assinatura, e um global para isso seria um segundo lugar guardando a mesma
+     * coisa. Quem escreve é `dispor`, que é quem sabe. */
+    uint8_t   tam;
     lv_obj_t *corpo[3];      /* A largo-baixo, B estreito-alto, C médio */
     /* O relevo. Na referência a luz pega o TOPO e a ESQUERDA e a sombra o
      * BAIXO e a DIREITA — é esse par de lados adjacentes que dá o volume, e não
@@ -434,11 +445,22 @@ static bool piscando(bytelo_t *p, const bytelo_alvo_t *a, uint32_t agora)
  * lv_image_set_scale TRANSFORMA por software, o que custa ~0,76 µs por pixel de
  * saída nesta placa. Inaceitável por quadro; irrelevante uma vez por troca de
  * estado, e a guarda p_prop é o que garante "uma vez". */
+/* A posição do adorno ACOMPANHA a cara, em unidades de arte dela. É o que
+ * mantém o adorno rente à silhueta em qualquer degrau — com posição fixa em
+ * pixels, a cara grande o engole.
+ *
+ * O preço disso apareceu no degrau grande: adorno mais para fora encosta no
+ * indicador de bateria do canto. A saída não foi mover o adorno, foi apertar o
+ * degrau — 80% em vez de 88% — porque numa tela de 480px não cabem, ao mesmo
+ * tempo, uma cara de 269px, um adorno de 110px fora dela e a bateria no canto. */
 static void aplicar_prop(bytelo_t *p, const bytelo_alvo_t *a, int16_t d,
                          int16_t cx, int16_t cy)
 {
-    if (p->p_prop == (int) a->prop) return;
-    p->p_prop = (int) a->prop;
+    /* O degrau entra na guarda: mudar de tamanho muda a escala do adorno, e sem
+     * isto ele ficaria no tamanho do degrau anterior. */
+    const int chave = (int) a->prop * 8 + p->tam;
+    if (p->p_prop == chave) return;
+    p->p_prop = chave;
 
     const lv_image_dsc_t *dsc = prop_dsc(a->prop);
     if (!dsc) { lv_obj_add_flag(p->prop, LV_OBJ_FLAG_HIDDEN); return; }
@@ -510,6 +532,7 @@ static void bytelo_criar(lv_obj_t *pai, mascote_t *m)
     lv_image_set_antialias(p->prop, false);
     lv_obj_add_flag(p->prop, LV_OBJ_FLAG_HIDDEN);
 
+    p->tam = 1;          /* médio até o layout dizer outra coisa */
     p->p_d = -1;
     p->p_olho = -1;
     p->p_prop = -1;
@@ -524,7 +547,7 @@ static void bytelo_animar(mascote_t *m, uint32_t agora, bool sozinho)
     if (!p || !p->raiz) return;
 
     const bytelo_alvo_t *a = &ALVO[m->alvo];
-    const int16_t dc = CARA(m->d);
+    const int16_t dc = CARA(m->d, p->tam);
     geometria(p, dc);
 
     if (piscando(p, a, agora)) {
@@ -562,7 +585,7 @@ static void bytelo_animar(mascote_t *m, uint32_t agora, bool sozinho)
 }
 
 static void bytelo_dispor(mascote_t *m, int16_t d, int16_t x, int16_t y,
-                         bool mostrar)
+                          bool mostrar, uint8_t tamanho)
 {
     bytelo_t *p = m->interno;
     if (!p || !p->raiz) return;
@@ -580,7 +603,8 @@ static void bytelo_dispor(mascote_t *m, int16_t d, int16_t x, int16_t y,
      * desenhada menor dentro dele. A margem é o espaço dos adornos. */
     lv_obj_set_size(p->raiz, d, d);
     lv_obj_align(p->raiz, LV_ALIGN_CENTER, x, y);
-    geometria(p, CARA(d));
+    p->tam = tamanho;
+    geometria(p, CARA(d, tamanho));
 }
 
 /* A raiz leva consigo corpo, relevo, olhos, cruzes, sobrancelhas e boca, que são

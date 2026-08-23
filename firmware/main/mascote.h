@@ -64,9 +64,15 @@ typedef struct {
      * não chamar bsp_display_lock() aqui dentro, é deadlock. */
     void (*animar)(mascote_t *m, uint32_t agora, bool sozinho);
 
-    /* Quando o layout muda de tamanho, de posição ou de visibilidade.
-     * `mostrar` false esconde tudo o que pertence ao personagem. */
-    void (*dispor)(mascote_t *m, int16_t d, int16_t x, int16_t y, bool mostrar);
+    /* Quando o layout muda de tamanho, de posição, de visibilidade ou de
+     * ajuste. `mostrar` false esconde tudo o que pertence ao personagem.
+     *
+     * `tamanho` é o degrau escolhido no painel: 0 pequeno, 1 médio, 2 grande. O
+     * que cada degrau SIGNIFICA é do personagem, não do layout — a mesma palavra
+     * não quer dizer o mesmo para uma imagem de 306px e para uma cara desenhada
+     * a partir de objetos. */
+    void (*dispor)(mascote_t *m, int16_t d, int16_t x, int16_t y, bool mostrar,
+                   uint8_t tamanho);
 
     /* Desfaz o que criar() fez: apaga os objetos e libera o bloco `interno`.
      * Chamada com o mutex do LVGL JÁ na mão.

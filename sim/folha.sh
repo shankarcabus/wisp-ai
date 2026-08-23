@@ -42,6 +42,27 @@ ESTADOS="idle working tool asking waiting done error offline"
     echo "rest";              echo "shot $OUT/repouso.bmp"
     echo "wake"; echo "tile 1"; echo "shot $OUT/limites.bmp"
     echo "nolim";             echo "shot $OUT/limites-indisponivel.bmp"
+    echo "lim"; echo "tile 0"
+
+    # As variantes dos ajustes, num estado só cada.
+    #
+    # O produto cartesiano seriam 4 combinados de rótulo x 3 tamanhos x 2 idiomas
+    # x 8 estados = 192 imagens por personagem, que ninguém abre. O que se compara
+    # aqui é o AJUSTE, e um estado basta para vê-lo.
+    echo "todos tool"
+    for t in small medium large; do
+        echo "tam $t";          echo "shot $OUT/tam-$t.bmp"
+    done
+    echo "tam medium"
+    for par in "1 1" "1 0" "0 1" "0 0"; do
+        set -- $par
+        echo "acao $1"; echo "proj $2"; echo "shot $OUT/rot-$1$2.bmp"
+    done
+    echo "acao 1"; echo "proj 1"
+    for l in en pt; do
+        echo "idioma $l";       echo "shot $OUT/idioma-$l.bmp"
+    done
+    echo "idioma en"
     echo "quit"
 } | "$SIM" --headless > "$OUT/folha.log" 2>&1 || true
 
@@ -53,4 +74,4 @@ fi
 
 QTD=$(ls -1 "$OUT"/*.bmp 2>/dev/null | wc -l | tr -d ' ')
 echo "$QTD capturas de '$WISP_MASCOT' em $OUT"
-[[ "$QTD" -eq 27 ]] || { echo "esperava 27 capturas, saíram $QTD — veja $OUT/folha.log" >&2; exit 1; }
+[[ "$QTD" -eq 36 ]] || { echo "esperava 36 capturas, saíram $QTD — veja $OUT/folha.log" >&2; exit 1; }

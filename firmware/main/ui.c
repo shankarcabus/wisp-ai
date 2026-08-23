@@ -294,7 +294,7 @@ static void aplicar_layout(int total)
          * para o que orbita o corpo, e chamar vaga_de() de lá seria o layout
          * atravessando a fronteira na direção errada. */
         m->d = v.d; m->x = v.x; m->y = cy;
-        mascote_ativo()->dispor(m, v.d, v.x, cy, ativo);
+        mascote_ativo()->dispor(m, v.d, v.x, cy, ativo, g_cfg.tamanho);
         if (!ativo) continue;
 
     lv_obj_set_style_text_font(m->detail, v.f_det, 0);
@@ -854,7 +854,7 @@ void ui_update(const wisp_data_t *d)
                  * que já pegou o rodapé antes delas. Os rótulos são do layout,
                  * então saem daqui. */
                 mascote_t *m = &g_m[i];
-                mascote_ativo()->dispor(m, m->d, m->x, m->y, false);
+                mascote_ativo()->dispor(m, m->d, m->x, m->y, false, g_cfg.tamanho);
                 lv_obj_t *rot[] = {m->detail, m->project};
                 for (size_t k = 0; k < 2; k++)
                     if (rot[k]) lv_obj_add_flag(rot[k], LV_OBJ_FLAG_HIDDEN);
