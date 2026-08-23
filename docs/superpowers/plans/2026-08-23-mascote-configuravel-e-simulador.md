@@ -15,11 +15,39 @@
 - `firmware/main/ui.c` e `firmware/main/main.c` contêm **zero** `#if CONFIG_IDF_TARGET_*`. Diferença de placa vai em `firmware/main/board.h`; diferença de estilo não existe. Personagem é **dado**, nunca condicional de compilação.
 - Ambas as placas continuam compilando: `esp32c6` e `esp32s3`.
 - **Nenhuma decodificação de imagem em tempo de execução.** A conversão acontece no build. Medido no projeto: com decodificação de PNG em runtime o FPS caiu de 62 para 1–7 e a RAM interna chegou a **12 bytes** de mínimo histórico.
-- Tamanhos do mascote na placa: **306px** (1 sessão), **178px** (2), **140px** (3 e 4), de `vaga_de()` em `firmware/main/ui.c:388`. **Não alterar.** Os 306 são exatamente o tamanho da arte, e imagem maior que o objeto sai cortada, não reduzida.
+- **A placa desenha UM mascote, sempre, a 306px.** `ui_update()` força `n = 1` (`firmware/main/ui.c:1319`); os ramos de 178px e 140px em `vaga_de()` (`:388`) são inalcançáveis. Sessões extras viram lista de texto sob o rótulo. `vaga_de()` **não se altera**: os 306 são exatamente o tamanho da arte, e imagem maior que o objeto sai cortada, não reduzida.
+- Mesmo assim, o personagem novo mede tudo em **fração de `d`**, nunca em px absoluto. É o que mantém possível ressuscitar vários mascotes depois — o motivo do abandono foi a proporção fixa do PNG, que não se aplica a personagem feito de objetos.
 - Props nunca são transformados por quadro — só na troca de estado.
 - O C6 não tem PSRAM. RAM interna é o recurso mais escasso da placa.
 - Depois da extração, o Terminal tem de sair **byte a byte igual** na tela. A Task 3 existe para tornar isso verificável.
 - LVGL é 9.5.0, vindo de `firmware/managed_components/lvgl__lvgl/` — que é **gitignored**. O simulador aceita a cópia local quando ela existe e busca a v9.5.0 quando não.
+
+---
+
+## Tasks 1 a 3 — FEITAS. O que a execução mudou
+
+O código no repositório é o registro; estes são os desvios em relação ao que
+estava escrito abaixo, todos descobertos executando.
+
+| o que | por que mudou |
+|---|---|
+| `setvbuf(stdout, NULL, _IOLBF, 0)` em `main.c` | com stdout em pipe o libc buferiza por bloco, e o log — que existe para ser comparado com o serial — só apareceria quando o processo morresse. Ele não morre |
+| `LV_MEM_SIZE` de 64KB para 8MB | `lv_snapshot_take` de 480×480 em ARGB8888 pede 900KB de uma vez. O pool do template é de tamanho embarcado e recusava: `lv_draw_buf_create_ex: No memory` |
+| `LV_USE_SNAPSHOT 1`, `LV_USE_LOG 1`, `LV_LOG_PRINTF 1` | o snapshot é a captura; o log foi o que **explicou** a falha acima em vez de deixar adivinhar, e por isso fica ligado |
+| `sim/relogio.c` — relógio virtual, passo de 16ms | o mascote respira contra `lv_tick_get()`. Com o relógio do sistema, duas execuções da mesma sequência caem em fases diferentes e a comparação byte a byte é impossível |
+| **sem** `lv_sdl_mouse_create()` | o mouse real da máquina passando sobre a janela mexe no scroll do tileview. Medido: 25063 pixels de diferença no painel de limites |
+| `--headless` | mesmo sem mouse, a primeira execução após um build diferia das seguintes, que eram idênticas entre si — são os eventos que o sistema entrega ao lançar janela. Sem janela, zero diferenças em 27×2 capturas |
+| BMP escrito à mão em vez de `SDL_SaveBMP` | em headless o vídeo do SDL não sobe. Um BMP de 24 bits são ~50 linhas e não vale a dependência |
+| comando `quit` | sem ele a captura em lote é assíncrona: quem chama tem de adivinhar quando os arquivos ficaram prontos e matar o processo. Com `quit`, o pipe termina quando o trabalho termina |
+| `arg[512]` e `%511s` no parser | com 32 bytes o `sscanf` truncava caminhos absolutos, o `fopen` falhava e a folha saía **vazia** sem explicação óbvia |
+| assentamento de passos FIXOS antes de capturar | sair cedo ("até as animações pararem") faz o instante virtual da captura depender do estado, e como a respiração é função do tick absoluto, isso basta para dois arquivos diferirem |
+| `rest` esvazia a lista de sessões | repouso exige `sem_sessao` além do silêncio (`ui.c:1313`). Só adiantar `age_s` não entra em repouso |
+
+O que foi verificado: `firmware/main/ui.c` compila no host **sem modificação**;
+os 8 assets convertidos carregam e o log diz `FPS: 0`, que é o que o `CLAUDE.md`
+documenta como tela quieta e não lenta; os três modos da tela aparecem
+corretos (mascote, painel de limites, repouso); e `./sim/folha.sh` gera 27
+imagens que, geradas duas vezes, não têm uma diferença de byte.
 
 ---
 
@@ -887,8 +915,7 @@ extern const personagem_t MASCOTE_TERMINAL;
 - [ ] **Step 1: Gerar a folha de referência, ANTES de mexer em nada**
 
 ```bash
-./sim/folha.sh sim/shots-antes
-ls sim/shots-antes/*.bmp | wc -l     # esperado: 27
+./sim/folha.sh sim/shots-antes    # falha alto se não sair 27
 ```
 
 Estes 27 arquivos são a definição de "não mudou". Não versionar: entram no `.gitignore` do `sim/`.
@@ -1791,14 +1818,17 @@ open /tmp/px-*.png
 
 Esperado: os oito estados com os adornos nos lugares, cada prop com pixel duro e sem borrão. Comparar a olho com a folha de referência.
 
-- [ ] **Step 6: Conferir com quatro sessões, que é o caso apertado**
+- [ ] **Step 6: Conferir com a lista de sessões cheia**
+
+Não existe caso de quatro mascotes — a placa desenha um. O que quatro sessões mudam é a **lista de texto** sob o rótulo, que sobe quatro linhas e é onde o prop de baixo (`laptop`, `maos`) pode encostar.
 
 ```bash
-printf 'char pixel\nn 4\ntodos tool\nshot /tmp/px4-tool.bmp\ntodos done\nshot /tmp/px4-done.bmp\n' | ./sim/build/wisp-sim
-sips -s format png /tmp/px4-tool.bmp --out /tmp/px4-tool.png && open /tmp/px4-tool.png
+printf 'char pixel\nn 4\ntodos tool\nshot /tmp/px4-tool.bmp\ntodos waiting\nshot /tmp/px4-waiting.bmp\nquit\n' | ./sim/build/wisp-sim --headless
+for f in tool waiting; do sips -s format png /tmp/px4-$f.bmp --out /tmp/px4-$f.png >/dev/null; done
+open /tmp/px4-tool.png /tmp/px4-waiting.png
 ```
 
-Esperado: quatro mascotes de 140px, cada um com o seu laptop, sem invasão entre vagas e sem prop encostando no rótulo de projeto. Se invadir, ajustar `prop_x`/`prop_y` — não `vaga_de()`.
+Esperado: um mascote de 306px com o laptop, e a lista de quatro projetos abaixo sem colisão. Se colidir, ajustar `prop_y` — não `vaga_de()`.
 
 - [ ] **Step 7: Compilar para as duas placas**
 
@@ -1915,13 +1945,13 @@ cd firmware && rm -rf build sdkconfig && idf.py set-target esp32c6 && idf.py bui
 
 Se o esptool recusar: desconectar e reconectar o cabo USB-C — esta placa não tem botão de reset, o cabo é o reset. Não forçar DTR/RTS, que deixa a porta muda.
 
-- [ ] **Step 2: Medir FPS nos três layouts**
+- [ ] **Step 2: Medir FPS**
 
 ```bash
 idf.py -C firmware monitor
 ```
 
-Com uma, duas e quatro sessões ativas, ler as linhas `I (ui) FPS: <n>  (<q> sessao/oes)`. Registrar os três números. Comparar com os mesmos três do Terminal vetorial, regravando com `terminal` — comparação contra o vetorial, não contra um número absoluto, porque é o vetorial que já se sabe aceitável nesta placa.
+Ler as linhas `I (ui) FPS: <n>  (<q> sessao/oes)` percorrendo os oito estados — os props entram e saem na troca de estado, e é aí que a transformação é paga. Não há "três layouts": a placa desenha um mascote. Comparar com o Terminal **vetorial** nos mesmos oito estados, regravando com `terminal`, porque é o vetorial que já se sabe aceitável nesta placa; o de imagem reporta 0 por desenhar só na troca.
 
 - [ ] **Step 3: Medir a RAM interna mínima**
 
@@ -1929,11 +1959,11 @@ No monitor, a linha de heap mínimo. O número histórico do projeto é **4,7KB*
 
 - [ ] **Step 4: Exercitar o swipe, que é onde props e transformação concorrem**
 
-Com quatro sessões em `tool` (quatro laptops em cena), deslizar repetidamente entre o tile de mascotes e o de limites. Procurar: rastro, meio-quadro, prop que fica para trás. Se aparecer, o suspeito é a transformação do prop sobrevivendo à invalidação parcial — o mesmo sintoma que o projeto irmão descreve como borrão.
+Em `tool` (laptop em cena), deslizar repetidamente entre o tile de mascotes e o de limites. Procurar: rastro, meio-quadro, prop que fica para trás. Se aparecer, o suspeito é a transformação do prop sobrevivendo à invalidação parcial — o mesmo sintoma que o projeto irmão descreve como borrão.
 
 - [ ] **Step 5: Escrever o que foi medido**
 
-Em `firmware/README.md`, uma tabela com os seis números (FPS × 3 layouts × 2 personagens) e o heap mínimo. Números reais, com a data. Em `CLAUDE.md`, atualizar a seção de expectativas de verificação: o C6 fica verificado em hardware, o S3 por compilação — não há placa S3 nesta bancada, e dizer o contrário seria mentir na documentação que existe justamente para isso.
+Em `firmware/README.md`, uma tabela com FPS por estado para os dois personagens, e o heap mínimo de cada. Números reais, com a data. Em `CLAUDE.md`, atualizar a seção de expectativas de verificação: o C6 fica verificado em hardware, o S3 por compilação — não há placa S3 nesta bancada, e dizer o contrário seria mentir na documentação que existe justamente para isso.
 
 - [ ] **Step 6: Commit**
 
