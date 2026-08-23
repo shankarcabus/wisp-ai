@@ -81,7 +81,7 @@ struct SessionRow: View {
         HStack(spacing: 7) {
             // One mascot per session, same as the board. A coloured dot would
             // mean memorising a colour code; the character you read directly.
-            Mascot(state: MascotState(s.st), side: 20)
+            Mascot(state: MascotState(s.st), side: 20 * Ajustes.macSize.fator)
             Text(s.pj.isEmpty ? "—" : s.pj)
                 .font(.system(size: 11, weight: .medium))
                 .lineLimit(1)
@@ -97,6 +97,31 @@ struct SessionRow: View {
     }
 }
 
+/// Os oito estados do personagem escolhido, em fileira.
+///
+/// Sai de graça: os sprites já estão carregados para desenhar o estado atual, e
+/// mostrar os oito é o que responde "não consigo ver todos os estados". Escolher
+/// personagem sem isso é escolher no escuro.
+///
+/// Sem rótulo por estado — oito palavras em 300px de largura viram ruído, e o que
+/// se quer aqui é reconhecer a cara. O nome vem no tooltip.
+struct Galeria: View {
+    var body: some View {
+        // A conta do lado: o painel tem 300px e a Mascot ocupa `side * 1.2` de
+        // largura (o quadro externo do SpriteMascot). Oito delas com 3px de
+        // respiro em 260px úteis dão 20 de lado, com folga. Com 24 a fileira fica
+        // mais larga que o painel e EMPURRA o resto do conteúdo para fora — o
+        // HStack cresce e o popover cresce com ele.
+        HStack(spacing: 3) {
+            ForEach(MascotState.allCases, id: \.self) { s in
+                Mascot(state: s, side: 20)
+                    .help(s.label)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 struct Panel: View {
     @ObservedObject var bridge: Bridge
     /// Off only for the documentation shots. The footer is AppKit-backed
@@ -107,6 +132,11 @@ struct Panel: View {
     @State private var openAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
     @State private var character = Sprites.chosen
+    @State private var acao       = Ajustes.boardAction
+    @State private var projetos   = Ajustes.boardProject
+    @State private var idioma     = Ajustes.boardLanguage
+    @State private var tamPlaca   = Ajustes.boardSize
+    @State private var tamMac     = Ajustes.macSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -145,7 +175,7 @@ struct Panel: View {
         HStack(spacing: 10) {
             Mascot(state: bridge.state.alive
                    ? (bridge.data?.dominantState ?? .idle) : .offline,
-                   side: 42)
+                   side: 42 * Ajustes.macSize.fator)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Wisp").font(.system(size: 13, weight: .semibold))
                 Text(bridge.state.alive
@@ -308,6 +338,11 @@ struct Panel: View {
             .toggleStyle(.checkbox)
             .onChange(of: openAtLogin) { _, on in applyLogin(on) }
 
+            SectionHeader(title: "Mascot")
+                .padding(.top, 2)
+
+            Galeria()
+
             if !Sprites.available().isEmpty {
                 Picker("Character", selection: $character) {
                     Text("Wisp (vector)").tag("")
@@ -316,6 +351,43 @@ struct Panel: View {
                 .font(.system(size: 11))
                 .onChange(of: character) { _, chosen in Sprites.chosen = chosen }
             }
+
+            Toggle(isOn: $acao) {
+                Text("Action under the mascot").font(.system(size: 11))
+            }
+            .toggleStyle(.checkbox)
+            .onChange(of: acao) { _, v in Ajustes.boardAction = v }
+            .help("On the board. In Portuguese the label shows the state, "
+                  + "because the tool name it would show instead comes from the "
+                  + "bridge in English and cannot be translated.")
+
+            Toggle(isOn: $projetos) {
+                Text("Projects under the mascot").font(.system(size: 11))
+            }
+            .toggleStyle(.checkbox)
+            .onChange(of: projetos) { _, v in Ajustes.boardProject = v }
+            .help("On the board. The list of running sessions, one line each.")
+
+            Picker("Language", selection: $idioma) {
+                Text("English").tag("en")
+                Text("Português").tag("pt")
+            }
+            .font(.system(size: 11))
+            .onChange(of: idioma) { _, v in Ajustes.boardLanguage = v }
+
+            Picker("Size on the board", selection: $tamPlaca) {
+                ForEach(Ajustes.Tamanho.allCases, id: \.self) { Text($0.rotulo).tag($0) }
+            }
+            .font(.system(size: 11))
+            .onChange(of: tamPlaca) { _, v in Ajustes.boardSize = v }
+
+            Picker("Size on the Mac", selection: $tamMac) {
+                ForEach(Ajustes.Tamanho.allCases, id: \.self) { Text($0.rotulo).tag($0) }
+            }
+            .font(.system(size: 11))
+            .onChange(of: tamMac) { _, v in Ajustes.macSize = v }
+
+            Divider()
 
             Toggle(isOn: $bridge.floating) {
                 Text("Mascot on the desktop").font(.system(size: 11))

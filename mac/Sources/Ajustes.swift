@@ -56,9 +56,15 @@ enum Ajustes {
         set { UserDefaults.standard.set(newValue, forKey: kBoardLang); publicar() }
     }
 
-    /// Onde o JSON é publicado. Var para a sonda poder apontar para /tmp — um
-    /// teste que escreve no `~/.wisp` de quem roda muda a configuração real da
-    /// pessoa.
+    /// Onde o JSON é publicado.
+    ///
+    /// Var, e isto NÃO é conveniência de teste: qualquer ferramenta que mexa em
+    /// `Sprites.chosen` publica por consequência, porque o setter dele chama
+    /// `publicar()`. Uma ferramenta de bancada que só queria renderizar a partir
+    /// de outra pasta de arte acaba reescrevendo a configuração de quem a rodou
+    /// — aconteceu com o `mac/shots.sh`, que ficou com `character: "assets"` no
+    /// arquivo de alguém. Toda ferramenta que redireciona `Sprites.folder` tem de
+    /// redirecionar isto também.
     static var arquivo = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".wisp/ui.json")
 

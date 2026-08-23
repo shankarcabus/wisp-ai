@@ -65,6 +65,15 @@ MainActor.assumeIsolated {
     // machine that generated them — and anybody regenerating them gets a
     // different README.
     Sprites.folder = URL(fileURLWithPath: "firmware")
+
+    // E o arquivo publicado vai para o lixo, pelo mesmo motivo e com mais
+    // urgência: o setter de Sprites.chosen PUBLICA em ~/.wisp/ui.json, para a
+    // placa seguir a escolha do painel. Sem isto, rodar esta ferramenta de
+    // documentação reescreve a configuração de quem rodou — e com um nome de
+    // personagem, "assets", que só existe aqui dentro. Aconteceu uma vez.
+    Ajustes.arquivo = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("wisp-shots-ui.json")
+
     Sprites.chosen = "assets"
 
     let bridge = Bridge.fixture(panelJSON)

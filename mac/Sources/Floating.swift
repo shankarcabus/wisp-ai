@@ -51,7 +51,7 @@ struct FloatingContent: View {
                 bubble(what, project)
                     .padding(.bottom, 2)
             }
-            Mascot(state: state, side: size)
+            Mascot(state: state, side: size * Ajustes.macSize.fator)
         }
         .padding(8)
         // No background. See the comment at the top.
