@@ -49,6 +49,7 @@
 
 #include "esp_log.h"
 #include "mascote.h"
+#include "mascote_pixel_props.h"
 
 static const char *TAG = "pixel";
 
@@ -71,6 +72,13 @@ typedef enum { BOCA_NENHUMA, BOCA_ABERTA, BOCA_TRISTE } boca_t;
 typedef struct {
     olho_t  olho;
     boca_t  boca;
+    prop_t  prop;
+    /* Unidades de arte, do centro da cara. Os adornos SOBREPÕEM o canto da
+     * cabeça em vez de flutuar acima dela, e isso não é gosto: o mascote de
+     * 306px ocupa y 37..343 numa tela de 480, então sobram 37px acima da cabeça
+     * e um adorno de nove unidades a treze pixels cada mede 117. Flutuar acima
+     * sairia cortado pela borda — foi o que aconteceu na primeira tentativa. */
+    int8_t  prop_x, prop_y;
     bool    sobrancelha;  /* preocupada: ponta INTERNA para cima */
     bool    pisca;
     uint8_t respira;      /* amplitude da respiração, em 256-avos de escala */
@@ -80,15 +88,15 @@ typedef struct {
 /* Um por estado, na ordem de wisp_state_t (ui.h). Os oito estados da folha de
  * referência caem um a um nos do Wisp. */
 static const pixel_alvo_t ALVO[WISP_COUNT] = {
-    /*                    olho        boca          sobr   pisca resp incl */
-    [WISP_IDLE]    = {OLHO_NORMAL, BOCA_NENHUMA, false, true,   6,   0},
-    [WISP_WORKING] = {OLHO_NORMAL, BOCA_NENHUMA, false, true,   4,   0},
-    [WISP_TOOL]    = {OLHO_NORMAL, BOCA_NENHUMA, false, true,   3,   0},
-    [WISP_ASKING]  = {OLHO_NORMAL, BOCA_NENHUMA, false, true,   7,   0},
-    [WISP_WAITING] = {OLHO_TRISTE, BOCA_NENHUMA, true,  true,  10,   0},
-    [WISP_DONE]    = {OLHO_ARCO,   BOCA_ABERTA,  false, false,  9,   0},
-    [WISP_ERROR]   = {OLHO_TRISTE, BOCA_TRISTE,  true,  false,  3,  -4},
-    [WISP_OFFLINE] = {OLHO_X,      BOCA_NENHUMA, false, false,  2,   0},
+    /*                    olho        boca          prop            x    y  sobr  pisca resp incl */
+    [WISP_IDLE]    = {OLHO_NORMAL, BOCA_NENHUMA, PROP_NENHUM,     0,   0, false, true,   6,   0},
+    [WISP_WORKING] = {OLHO_NORMAL, BOCA_NENHUMA, PROP_BOLHA,      7,  -7, false, true,   4,   0},
+    [WISP_TOOL]    = {OLHO_NORMAL, BOCA_NENHUMA, PROP_LAPTOP,     0,   7, false, true,   3,   0},
+    [WISP_ASKING]  = {OLHO_NORMAL, BOCA_NENHUMA, PROP_PERGUNTA,   7,  -6, false, true,   7,   0},
+    [WISP_WAITING] = {OLHO_TRISTE, BOCA_NENHUMA, PROP_MAOS,       0,   8, true,  true,  10,   0},
+    [WISP_DONE]    = {OLHO_ARCO,   BOCA_ABERTA,  PROP_FAISCAS,    7,  -7, false, false,  9,   0},
+    [WISP_ERROR]   = {OLHO_TRISTE, BOCA_TRISTE,  PROP_NENHUM,     0,   0, true,  false,  3,  -4},
+    [WISP_OFFLINE] = {OLHO_X,      BOCA_NENHUMA, PROP_WIFI,       0,  -7, false, false,  2,   0},
 };
 
 /* `done` não pisca porque os olhos já estão em arco: piscar um olho fechado não
@@ -96,8 +104,8 @@ static const pixel_alvo_t ALVO[WISP_COUNT] = {
  * que eles dizem. */
 #define PISCADA_MS 170
 
-/* Dezesseis objetos: três do corpo, quatro de relevo, dois de olho, duas barras
- * do X, duas sobrancelhas e três de boca. A contagem importa porque é ela que a
+/* Dezessete objetos: três do corpo, quatro de relevo, dois de olho, duas barras
+ * do X, duas sobrancelhas, três de boca e um de adorno. A contagem importa porque é ela que a
  * medição na placa vai cobrar — para comparação, o Terminal vetorial usa cerca
  * de vinte e anima bem nesta placa. */
 typedef struct {
@@ -120,6 +128,8 @@ typedef struct {
      * de espessura é degrau, e um único retângulo rotacionado só dá uma boca
      * torta, não uma triste. */
     lv_obj_t *boca, *boca_ponta[2];
+    lv_obj_t *prop;
+    int       p_prop;        /* `int` pelo mesmo motivo de p_olho: -1 invalida */
     uint32_t  prox_piscada, inicio_piscada;
     int16_t   p_d;           /* guarda: só refaz geometria se `d` mudou */
     /* `int`, e não olho_t, porque -1 é o valor de "invalidado" que força a
@@ -153,6 +163,7 @@ static void geometria(pixel_t *p, int16_t d)
      * antes e não corrige — o personagem perde o olho em arco e o X no instante
      * em que o layout troca de tamanho. */
     p->p_olho = -1;
+    p->p_prop = -1;
 
     const int16_t deg = U(d, DEG);
 
@@ -370,6 +381,39 @@ static bool piscando(pixel_t *p, const pixel_alvo_t *a, uint32_t agora)
     return false;
 }
 
+/* O adorno.
+ *
+ * A escala é INTEIRA e sai do tamanho do mascote, sem tocar no layout: uma
+ * unidade de arte tem d/22 px, e a 306px isso dá 13. `vaga_de()` continua
+ * intocada — é geometria afinada à mão e não se mexe nela para acomodar
+ * personagem novo.
+ *
+ * lv_image_set_scale TRANSFORMA por software, o que custa ~0,76 µs por pixel de
+ * saída nesta placa. Inaceitável por quadro; irrelevante uma vez por troca de
+ * estado, e a guarda p_prop é o que garante "uma vez". */
+static void aplicar_prop(pixel_t *p, const pixel_alvo_t *a, int16_t d)
+{
+    if (p->p_prop == (int) a->prop) return;
+    p->p_prop = (int) a->prop;
+
+    const lv_image_dsc_t *dsc = prop_dsc(a->prop);
+    if (!dsc) { lv_obj_add_flag(p->prop, LV_OBJ_FLAG_HIDDEN); return; }
+
+    int16_t escala = U(d, 1);
+    if (escala < 1) escala = 1;
+
+    lv_image_set_src(p->prop, dsc);
+    /* Tamanho NATURAL mais pivô no centro: assim a transformação cresce em
+     * torno do ponto de alinhamento e o adorno fica onde a tabela diz, em vez
+     * de escorregar para o canto conforme a escala. */
+    lv_obj_set_size(p->prop, dsc->header.w, dsc->header.h);
+    lv_obj_set_style_transform_pivot_x(p->prop, dsc->header.w / 2, 0);
+    lv_obj_set_style_transform_pivot_y(p->prop, dsc->header.h / 2, 0);
+    lv_image_set_scale(p->prop, escala * 256);
+    lv_obj_align(p->prop, LV_ALIGN_CENTER, U(d, a->prop_x), U(d, a->prop_y));
+    lv_obj_remove_flag(p->prop, LV_OBJ_FLAG_HIDDEN);
+}
+
 static void pixel_criar(lv_obj_t *pai, mascote_t *m)
 {
     pixel_t *p = lv_malloc_zeroed(sizeof(pixel_t));
@@ -384,6 +428,9 @@ static void pixel_criar(lv_obj_t *pai, mascote_t *m)
     lv_obj_set_style_pad_all(p->raiz, 0, 0);
     lv_obj_set_style_bg_opa(p->raiz, LV_OPA_TRANSP, 0);
     lv_obj_set_style_radius(p->raiz, 0, 0);
+    /* Os adornos saem da caixa da cara — a bolha e o `?` ficam acima da cabeça,
+     * o laptop passa do queixo. Sem isto o LVGL os recorta na borda da raiz. */
+    lv_obj_add_flag(p->raiz, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
 
     for (int i = 0; i < 3; i++) p->corpo[i] = retangulo(p->raiz, C_BASE);
     for (int i = 0; i < 2; i++) {
@@ -402,8 +449,16 @@ static void pixel_criar(lv_obj_t *pai, mascote_t *m)
     p->boca = retangulo(p->raiz, C_OLHO);
     lv_obj_add_flag(p->boca, LV_OBJ_FLAG_HIDDEN);
 
+    p->prop = lv_image_create(p->raiz);
+    so_decoracao(p->prop);
+    /* Pixel duro, não borrão: é o que separa pixel art de imagem de baixa
+     * resolução ampliada. */
+    lv_image_set_antialias(p->prop, false);
+    lv_obj_add_flag(p->prop, LV_OBJ_FLAG_HIDDEN);
+
     p->p_d = -1;
     p->p_olho = -1;
+    p->p_prop = -1;
 }
 
 static void pixel_animar(mascote_t *m, uint32_t agora, bool sozinho)
@@ -424,6 +479,7 @@ static void pixel_animar(mascote_t *m, uint32_t agora, bool sozinho)
     }
     aplicar_sobrancelha(p, a->sobrancelha, m->d);
     aplicar_boca(p, a->boca, m->d);
+    aplicar_prop(p, a, m->d);
 
     /* Respiração com o VOLUME CONSERVADO: o que estica na vertical encolhe na
      * horizontal. Sem isso o boneco não respira, ele infla.

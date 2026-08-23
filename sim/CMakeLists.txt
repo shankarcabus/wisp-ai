@@ -48,6 +48,7 @@ add_executable(wisp-sim
     ../firmware/main/mascote.c
     ../firmware/main/mascote_terminal.c
     ../firmware/main/mascote_pixel.c
+    ../firmware/main/mascote_pixel_props.c
 )
 
 # A ORDEM IMPORTA. shim/ vem primeiro para que esp_log.h, bsp/esp-bsp.h,

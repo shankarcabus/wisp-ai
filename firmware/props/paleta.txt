@@ -1,0 +1,9 @@
+# Um caractere por cor, em hex RGB. `.` é sempre transparente.
+# Os amarelos são os mesmos da cara, para os adornos pertencerem ao personagem.
+. transparente
+K 1a1a1a
+k 3a3a3a
+w ffffff
+y ffb81c
+Y ffd14a
+o e08a00
