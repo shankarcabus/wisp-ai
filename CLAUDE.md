@@ -65,6 +65,7 @@ this table is that none of these announce themselves.
 | A button does nothing | on the C6 the KEY is **GPIO10**, not GPIO18 — every source including Waveshare's example config says 18, and there is no button there. The middle button is the PWR: not a GPIO at all, it arrives as an interrupt bit in the AXP2101 | find pins by measuring: every free pin as input with pull-up, log which one drops. Careful — "the button does nothing" is also what a brightness request at the limit produces |
 | Board associates to WiFi then drops, stuck at "connecting" | could be the password, a missing SSID, a 5GHz-only network, or a post-association failure — all identical on screen | read the disconnect `reason` in the log: 15/204 password, 201 no AP, 205 connection fail |
 | Limits on screen say **limits unavailable** | Claude Code's cache in `~/.claude.json` (`cachedUsageUtilization`) only moves when something makes it fetch — measured, 24 days without moving — and the bridge now refuses a payload whose windows have all reset instead of showing numbers from a week that closed | check **"Fetch real limits"** is ticked in the Wisp.app panel: the app is the only thing here that can fetch live, with keychain access. Running `/usage` in Claude Code also unsticks the on-disk cache |
+| Board hangs, watchdog in series, `swdraw` never yields, no FPS line at all | a style transform on a CONTAINER — `transform_scale` or `transform_rotation` on an object with children. LVGL renders the whole subtree into a layer and transforms it in software: 306×306 is 93,636 px, and at the ~0.76 µs/px this silicon does that is ~71 ms per frame | transform nothing that has children. Animate by moving SMALL objects, which is what the Terminal does with its orbiting light and its eyes; the body never moves |
 | Limits on screen are *days* old | a bridge from before `9c6d401`: it gave the live reading a 10-minute deadline and then fell back to the cache no matter how old it was, while the app only refetches hourly when idle | update the bridge — it picks by age now, so the freshest source wins and the age on screen is the real one |
 
 ## Not bugs — do not "fix" these
@@ -77,6 +78,11 @@ this table is that none of these announce themselves.
   "it used to animate" usually means the assets partition stopped mounting.
 - **`ui: FPS: 0` or `1` with image art.** That is a quiet screen, not a slow
   one. The counter only counts real refreshes.
+- **The pixel character's body does not move.** Only its blink animates. Not an
+  omission: breathing it with a container transform hung the board, and
+  redrawing 306×306 every frame is expensive even without a transform. The
+  Terminal reaches the same conclusion from the other side — it animates a
+  14px light and two eyes, never the case.
 - **`esp_mmap_assets`'s `checksum` config field is 0 on purpose.** When the
   binary starts with the `MMAP` magic the component uses the checksum from the
   header and ignores the config. A constant there validates nothing and goes
@@ -100,3 +106,13 @@ State what you actually checked. Compiling for a target is not the same as
 running on it, and the difference matters here: at the time of writing, the C6
 path is verified on hardware and **the S3 path is verified by compilation
 only** — there is no S3 board on this bench.
+
+Both characters are measured on the C6 as of 23 Aug 2026 — FPS and internal heap,
+in `firmware/README.md`. That measurement is what caught the container-transform
+hang in the table above, which compiling could never have shown: the firmware
+built clean and then never drew a frame.
+
+There is also a simulator, `sim/`, which runs the real `ui.c` on the Mac. It is
+good for layout, expression and composition, and it proves nothing about cost —
+the Mac has no PSRAM shortage, no single core and no internal-RAM ceiling. Screen
+work goes there; numbers come from the board.

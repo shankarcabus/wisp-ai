@@ -205,3 +205,40 @@ automatically. The split is not cosmetic: `CONFIG_SPIRAM` and the
 If you edit any of those files after the first build, **delete `sdkconfig`** —
 IDF does not reapply defaults over an existing one, and the change looks like
 it was ignored.
+
+## What the two characters cost, measured
+
+Taken on the **C6** on 23 Aug 2026, one mascot on screen, over two minutes of
+serial each. The FPS counter is the one in `ui.c`; the heap is the periodic
+`interna livre` line from `main.c`.
+
+| | Terminal (image art) | Pixel |
+|---|---|---|
+| FPS | 1, spiking to 3 and 6 | 1–5, mostly 2 |
+| internal heap free | ~67 KB | ~72 KB |
+| internal heap, historical minimum | 36,504 B | 24,524 B |
+| watchdog / errors | none | none |
+
+**A low FPS here is not a slow screen.** The counter only counts real refreshes,
+and both characters redraw on change rather than every frame. What the numbers
+say is that neither of them starves the CPU.
+
+**On the 4.7 KB in `ui.c`'s comment.** That figure is a historical minimum from
+the configuration that decoded PNG at runtime, which this firmware no longer
+does. The real headroom today is an order of magnitude larger, and that is what
+made seventeen objects per mascot affordable.
+
+### The trap this measurement caught
+
+The first version of the pixel character breathed with `transform_scale` on its
+root container and tilted with `transform_rotation`. **It hung the board** —
+watchdog in series, `swdraw` never yielding, not one FPS line.
+
+Transforming a container makes LVGL render the whole subtree into a layer and
+transform it in software. At 306×306 that is 93,636 pixels, and at the ~0.76 µs
+per output pixel measured on this silicon it comes to **~71 ms per frame**.
+
+It is the same trap that rules out scaling bitmaps here, on a bigger target: the
+character avoided transforming its art and then transformed its face. What this
+board affords is what the Terminal does — move small things. The pixel character
+now animates only its blink, which is two objects of two by five art units.

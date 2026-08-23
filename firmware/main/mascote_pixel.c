@@ -81,22 +81,23 @@ typedef struct {
     int8_t  prop_x, prop_y;
     bool    sobrancelha;  /* preocupada: ponta INTERNA para cima */
     bool    pisca;
-    uint8_t respira;      /* amplitude da respiração, em 256-avos de escala */
-    int8_t  inclina;      /* graus, fixo */
+    /* Sem `respira` e sem `inclina`: os dois eram transformação de contêiner,
+     * que travou a placa. Ver a nota em pixel_animar(). O que distingue os
+     * estados é a cara e o adorno, não o movimento do corpo. */
 } pixel_alvo_t;
 
 /* Um por estado, na ordem de wisp_state_t (ui.h). Os oito estados da folha de
  * referência caem um a um nos do Wisp. */
 static const pixel_alvo_t ALVO[WISP_COUNT] = {
-    /*                    olho        boca          prop            x    y  sobr  pisca resp incl */
-    [WISP_IDLE]    = {OLHO_NORMAL, BOCA_NENHUMA, PROP_NENHUM,     0,   0, false, true,   6,   0},
-    [WISP_WORKING] = {OLHO_NORMAL, BOCA_NENHUMA, PROP_BOLHA,      7,  -7, false, true,   4,   0},
-    [WISP_TOOL]    = {OLHO_NORMAL, BOCA_NENHUMA, PROP_LAPTOP,     0,   7, false, true,   3,   0},
-    [WISP_ASKING]  = {OLHO_NORMAL, BOCA_NENHUMA, PROP_PERGUNTA,   7,  -6, false, true,   7,   0},
-    [WISP_WAITING] = {OLHO_TRISTE, BOCA_NENHUMA, PROP_MAOS,       0,   8, true,  true,  10,   0},
-    [WISP_DONE]    = {OLHO_ARCO,   BOCA_ABERTA,  PROP_FAISCAS,    7,  -7, false, false,  9,   0},
-    [WISP_ERROR]   = {OLHO_TRISTE, BOCA_TRISTE,  PROP_NENHUM,     0,   0, true,  false,  3,  -4},
-    [WISP_OFFLINE] = {OLHO_X,      BOCA_NENHUMA, PROP_WIFI,       0,  -7, false, false,  2,   0},
+    /*                    olho        boca          prop            x    y  sobr  pisca */
+    [WISP_IDLE]    = {OLHO_NORMAL, BOCA_NENHUMA, PROP_NENHUM,     0,   0, false, true },
+    [WISP_WORKING] = {OLHO_NORMAL, BOCA_NENHUMA, PROP_BOLHA,      7,  -7, false, true },
+    [WISP_TOOL]    = {OLHO_NORMAL, BOCA_NENHUMA, PROP_LAPTOP,     0,   7, false, true },
+    [WISP_ASKING]  = {OLHO_NORMAL, BOCA_NENHUMA, PROP_PERGUNTA,   7,  -6, false, true },
+    [WISP_WAITING] = {OLHO_TRISTE, BOCA_NENHUMA, PROP_MAOS,       0,   8, true,  true },
+    [WISP_DONE]    = {OLHO_ARCO,   BOCA_ABERTA,  PROP_FAISCAS,    7,  -7, false, false},
+    [WISP_ERROR]   = {OLHO_TRISTE, BOCA_TRISTE,  PROP_NENHUM,     0,   0, true,  false},
+    [WISP_OFFLINE] = {OLHO_X,      BOCA_NENHUMA, PROP_WIFI,       0,  -7, false, false},
 };
 
 /* `done` não pisca porque os olhos já estão em arco: piscar um olho fechado não
@@ -129,7 +130,13 @@ typedef struct {
      * torta, não uma triste. */
     lv_obj_t *boca, *boca_ponta[2];
     lv_obj_t *prop;
-    int       p_prop;        /* `int` pelo mesmo motivo de p_olho: -1 invalida */
+    /* Guardas. Todas `int` porque -1 é o valor de invalidado, e todas existem
+     * pela mesma razão: sem elas cada quadro reaplica estilo em objeto que não
+     * mudou, e estilo reaplicado é objeto sujo — inclusive as rotações, que
+     * fazem o LVGL desenhar numa camada. O trabalho por quadro tem de ser zero
+     * quando nada mudou. */
+    int       p_prop;
+    int       p_sobr, p_boca;
     uint32_t  prox_piscada, inicio_piscada;
     int16_t   p_d;           /* guarda: só refaz geometria se `d` mudou */
     /* `int`, e não olho_t, porque -1 é o valor de "invalidado" que força a
@@ -164,6 +171,8 @@ static void geometria(pixel_t *p, int16_t d)
      * em que o layout troca de tamanho. */
     p->p_olho = -1;
     p->p_prop = -1;
+    p->p_sobr = -1;
+    p->p_boca = -1;
 
     const int16_t deg = U(d, DEG);
 
@@ -290,6 +299,9 @@ static void aplicar_olho(pixel_t *p, olho_t o, int16_t d)
  * e registrou no `sob_invertida` da tabela dele. */
 static void aplicar_sobrancelha(pixel_t *p, bool mostrar, int16_t d)
 {
+    if (p->p_sobr == (int) mostrar) return;
+    p->p_sobr = (int) mostrar;
+
     for (int i = 0; i < 2; i++) {
         if (!mostrar) {
             lv_obj_add_flag(p->sobrancelha[i], LV_OBJ_FLAG_HIDDEN);
@@ -317,6 +329,9 @@ static void aplicar_sobrancelha(pixel_t *p, bool mostrar, int16_t d)
 
 static void aplicar_boca(pixel_t *p, boca_t b, int16_t d)
 {
+    if (p->p_boca == (int) b) return;
+    p->p_boca = (int) b;
+
     lv_obj_t *tudo[] = {p->boca, p->boca_ponta[0], p->boca_ponta[1]};
     if (b == BOCA_NENHUMA) {
         for (int i = 0; i < 3; i++) lv_obj_add_flag(tudo[i], LV_OBJ_FLAG_HIDDEN);
@@ -459,6 +474,8 @@ static void pixel_criar(lv_obj_t *pai, mascote_t *m)
     p->p_d = -1;
     p->p_olho = -1;
     p->p_prop = -1;
+    p->p_sobr = -1;
+    p->p_boca = -1;
 }
 
 static void pixel_animar(mascote_t *m, uint32_t agora, bool sozinho)
@@ -481,18 +498,27 @@ static void pixel_animar(mascote_t *m, uint32_t agora, bool sozinho)
     aplicar_boca(p, a->boca, m->d);
     aplicar_prop(p, a, m->d);
 
-    /* Respiração com o VOLUME CONSERVADO: o que estica na vertical encolhe na
-     * horizontal. Sem isso o boneco não respira, ele infla.
+    /* NADA DE TRANSFORMAR O CONTÊINER.
      *
-     * Âncora embaixo, porque o personagem se apoia no chão do quadro — é de lá
-     * que a referência mostra o peso. Um ciclo a cada ~2,2s. */
-    const int32_t fase = lv_trigo_sin((int16_t) ((agora / 6) % 360));
-    const int32_t sy   = 256 + fase * a->respira / 32767;
-    const int32_t sx   = 256 * 256 / (sy ? sy : 256);
-    lv_obj_set_style_transform_pivot_y(p->raiz, m->d, 0);
-    lv_obj_set_style_transform_scale_y(p->raiz, sy, 0);
-    lv_obj_set_style_transform_scale_x(p->raiz, sx, 0);
-    lv_obj_set_style_transform_rotation(p->raiz, a->inclina * 10, 0);
+     * A primeira versão respirava com transform_scale na raiz e inclinava com
+     * transform_rotation, e isso TRAVOU A PLACA: watchdog em série, task `swdraw`
+     * rodando sem ceder, zero linhas de FPS. Transformar um contêiner faz o LVGL
+     * renderizar a subárvore inteira numa camada e transformá-la por software —
+     * 306x306 são 93.636 pixels, e a ~0,76 µs cada dá ~71ms POR QUADRO.
+     *
+     * É a mesma armadilha que o comentário no topo deste arquivo descreve para
+     * bitmap, num alvo maior. Evitei transformar a arte e transformei a cara.
+     *
+     * O que esta placa comporta é o que o Terminal faz: mover coisas PEQUENAS.
+     * Redesenhar 306x306 a cada quadro é caro mesmo sem transformação — é por
+     * isso que o Terminal anima a luz em órbita e os olhos, e nunca a carcaça.
+     * Aqui sobra a piscada, que são dois objetos de dois por cinco unidades.
+     *
+     * O corpo fica parado, e isso não é perda: a referência é arte estática, e o
+     * projeto já documenta que uma imagem inteira só precisa mudar quando o
+     * estado muda. Se o corpo precisar de vida um dia, o caminho é mover um
+     * objeto pequeno — não escalar o conjunto. */
+    (void) a;
 }
 
 static void pixel_dispor(mascote_t *m, int16_t d, int16_t x, int16_t y,
