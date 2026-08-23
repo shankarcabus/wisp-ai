@@ -103,6 +103,7 @@ this table is that none of these announce themselves.
 | `firmware/main/mascote_bytelo.c` | the pixel character, drawn from LVGL objects |
 | `firmware/props/` + `firmware/tools/props_to_c.py` | Bytelo's adornments, as ASCII maps converted at build time. The `.c` is generated |
 | `sim/` | the board's screen, running the real `ui.c` on the Mac. Proves layout, proves nothing about cost |
+| `~/.wisp/mascot` + `bridge/config.py` | the character the panel published, and the only channel there is from the app to the bridge |
 | `firmware/sdkconfig.defaults` + `.esp32s3` / `.esp32c6` | shared config plus per-chip; the split is required because `CONFIG_SPIRAM` and `ESP32S3_*_CACHE` do not exist in the C6's Kconfig |
 | `firmware/README.md` | the hardware detail behind all of the above |
 
@@ -114,7 +115,12 @@ path is verified on hardware and **the S3 path is verified by compilation
 only** — there is no S3 board on this bench.
 
 Both characters are measured on the C6 as of 23 Aug 2026 — FPS and internal heap,
-in `firmware/README.md`. That measurement is what caught the container-transform
+in `firmware/README.md`. The runtime switch is verified on hardware the same day,
+end to end: the panel's choice reaches the board and the mascot changes **without
+reflashing**, both ways, writing the name to NVS each time; and a board rebooted
+with the bridge shut down comes up on the last character chosen. The one link
+simulated rather than clicked is the picker itself, whose setter is proven
+separately by a probe against `Sprites.chosen`. That measurement is what caught the container-transform
 hang in the table above, which compiling could never have shown: the firmware
 built clean and then never drew a frame.
 

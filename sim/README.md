@@ -34,10 +34,12 @@ Espelha a placa, onde a escolha vem da chave `mascot` na NVS e é lida no boot
 (`main.c`, `escolher_personagem()`). Nome desconhecido cai no padrão e avisa no
 log, nos dois lados.
 
-**Não há comando para trocar em tempo de execução**, e isso é deliberado:
-reconstruir a tela deixaria os objetos compartilhados de um personagem — as
-interrogações do Terminal, criadas uma vez — apontando para memória liberada.
-Trocar de personagem é relançar.
+Há também o comando `char <nome>`, que troca em tempo de execução. Ele **não
+existia** na primeira versão, e a razão é o que a interface ganhou depois: sem um
+`destruir`, reconstruir a tela deixava os objetos compartilhados do Terminal — as
+interrogações, criadas uma vez — apontando para memória liberada. Com `destruir`,
+a troca é a mesma que a placa faz quando o painel publica outra escolha, e é aqui
+que ela se testa.
 
 **Rode da raiz do repositório.** O simulador procura os assets convertidos em
 `firmware/build/mmap_build/assets/storage`, por caminho relativo.
@@ -113,6 +115,9 @@ Um por linha, em stdin.
 | `bat <pct\|-1>` | bateria; -1 = desconhecida |
 | `lim` / `nolim` | limites presentes ou indisponíveis |
 | `shot <arquivo.bmp>` | captura. Converta com `sips -s format png x.bmp --out x.png` |
+| `char <nome>` | troca de personagem, reconstruindo os objetos. Existe porque `destruir` existe — sem ele, reconstruir a tela deixava os objetos compartilhados do Terminal apontando para memória liberada |
+| `heap` | bytes em uso no pool do LVGL. Serve para provar que dez trocas não vazam |
+| `sprite <pasta>` | exporta o personagem como conjunto do app do Mac |
 | `quit` | encerra. É o que torna a captura em lote síncrona |
 | `?` | ajuda |
 

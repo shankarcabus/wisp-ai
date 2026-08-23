@@ -88,6 +88,20 @@ ESP-IDF either. After that you can close the network:
 The board only does **2.4GHz**. A 5GHz-only network will not connect, correct
 password or not.
 
+### The character is chosen in the panel, not here
+
+The provisioning question about the character sets the **initial** value, and
+nothing more. From then on the choice lives in the Mac panel's "Character"
+picker: it publishes to `~/.wisp/mascot`, the bridge carries it in `/state`, and
+the board switches **without being reflashed** — writing the name to NVS so a
+reboot with the bridge down comes up on the last choice rather than the factory
+one.
+
+Which also means the two surfaces follow one choice. A set that exists only on
+the Mac — your own art in `~/.wisp/mascots/` — has no counterpart compiled into
+the firmware, so the board falls back to the Terminal and says so in the log.
+That is accepted behaviour, not a defect.
+
 ## How the board finds the Mac
 
 It looks for the `_wisp._tcp` mDNS service, which the bridge publishes. That
