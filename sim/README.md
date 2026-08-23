@@ -117,6 +117,10 @@ Um por linha, em stdin.
 | `shot <arquivo.bmp>` | captura. Converta com `sips -s format png x.bmp --out x.png` |
 | `char <nome>` | troca de personagem, reconstruindo os objetos. Existe porque `destruir` existe — sem ele, reconstruir a tela deixava os objetos compartilhados do Terminal apontando para memória liberada |
 | `heap` | bytes em uso no pool do LVGL. Serve para provar que dez trocas não vazam |
+| `acao <0\|1>` | mostrar ou não o rótulo de detalhe |
+| `proj <0\|1>` | mostrar ou não a lista de projetos |
+| `idioma <en\|pt>` | idioma do rótulo. Em `pt` o estado ganha do detalhe, porque o detalhe vem do bridge e não é traduzível |
+| `tam <small\|medium\|large>` | degrau de tamanho. O que cada um significa é do personagem |
 | `sprite <pasta>` | exporta o personagem como conjunto do app do Mac |
 | `quit` | encerra. É o que torna a captura em lote síncrona |
 | `?` | ajuda |

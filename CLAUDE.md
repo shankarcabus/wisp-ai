@@ -87,6 +87,12 @@ this table is that none of these announce themselves.
   binary starts with the `MMAP` magic the component uses the checksum from the
   header and ignores the config. A constant there validates nothing and goes
   stale the moment the art changes — it reads like verification and isn't.
+- **The label shows the state, not the tool, when the language is Portuguese.**
+  Deliberate. The detail field comes from the bridge and is not translatable —
+  tool names like `Bash` and English phrases like `approve plan`. A label reading
+  "Bash" under a Portuguese screen is not in Portuguese, it is half in
+  Portuguese. The cost is stated where it happens: in `pt` the screen says what
+  Claude is doing, not what with.
 - **`QMI8658: Failed to read WHO_AM_I` at boot.** The IMU address depends on how
   SA0 is strapped, and the code tries both. The first failure is the probe.
 
@@ -103,7 +109,7 @@ this table is that none of these announce themselves.
 | `firmware/main/mascote_bytelo.c` | the pixel character, drawn from LVGL objects |
 | `firmware/props/` + `firmware/tools/props_to_c.py` | Bytelo's adornments, as ASCII maps converted at build time. The `.c` is generated |
 | `sim/` | the board's screen, running the real `ui.c` on the Mac. Proves layout, proves nothing about cost |
-| `~/.wisp/mascot` + `bridge/config.py` | the character the panel published, and the only channel there is from the app to the bridge |
+| `~/.wisp/ui.json` + `bridge/config.py` | everything the panel publishes — character, labels, language, sizes — and the only channel there is from the app to the bridge. The one-line `~/.wisp/mascot` is still read, as migration |
 | `firmware/sdkconfig.defaults` + `.esp32s3` / `.esp32c6` | shared config plus per-chip; the split is required because `CONFIG_SPIRAM` and `ESP32S3_*_CACHE` do not exist in the C6's Kconfig |
 | `firmware/README.md` | the hardware detail behind all of the above |
 
@@ -120,7 +126,11 @@ end to end: the panel's choice reaches the board and the mascot changes **withou
 reflashing**, both ways, writing the name to NVS each time; and a board rebooted
 with the bridge shut down comes up on the last character chosen. The one link
 simulated rather than clicked is the picker itself, whose setter is proven
-separately by a probe against `Sprites.chosen`. That measurement is what caught the container-transform
+separately by a probe against `Sprites.chosen`.
+
+The rest of the configuration surface is verified the same day and the same way:
+labels, language and size each reach the board and change the screen without
+reflashing, one `ajustes:` line in the log per change. That measurement is what caught the container-transform
 hang in the table above, which compiling could never have shown: the firmware
 built clean and then never drew a frame.
 
