@@ -45,7 +45,9 @@ add_executable(wisp-sim
     shim/esp_mmap_assets.c
     shim/esp_lv_decoder.c
     ../firmware/main/ui.c              # sem modificação de simulador
+    ../firmware/main/mascote.c
     ../firmware/main/mascote_terminal.c
+    ../firmware/main/mascote_pixel.c
 )
 
 # A ORDEM IMPORTA. shim/ vem primeiro para que esp_log.h, bsp/esp-bsp.h,

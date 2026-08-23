@@ -19,6 +19,8 @@ set -euo pipefail
 
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="${1:-$RAIZ/sim/shots}"
+# O personagem vem do ambiente, como na placa vem da NVS.
+export WISP_MASCOT="${WISP_MASCOT:-terminal}"
 SIM="$RAIZ/sim/build/wisp-sim"
 
 [[ -x "$SIM" ]] || { echo "compile primeiro: cmake --build sim/build -j" >&2; exit 1; }
@@ -50,5 +52,5 @@ if grep -q "^E (sim)" "$OUT/folha.log"; then
 fi
 
 QTD=$(ls -1 "$OUT"/*.bmp 2>/dev/null | wc -l | tr -d ' ')
-echo "$QTD capturas em $OUT"
+echo "$QTD capturas de '$WISP_MASCOT' em $OUT"
 [[ "$QTD" -eq 27 ]] || { echo "esperava 27 capturas, saíram $QTD — veja $OUT/folha.log" >&2; exit 1; }

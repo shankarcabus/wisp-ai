@@ -76,3 +76,4 @@ lv_obj_t *barra(lv_obj_t *pai, int w, int h, lv_color_t cor, int x, int y);
 
 /* —— os personagens que existem —— */
 extern const personagem_t MASCOTE_TERMINAL;
+extern const personagem_t MASCOTE_PIXEL;

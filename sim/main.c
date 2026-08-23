@@ -11,12 +11,14 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
 #include <SDL2/SDL.h>
 
 #include "cena.h"
+#include "mascote.h"
 #include "relogio.h"
 #include "lvgl.h"
 #include "ui.h"
@@ -112,6 +114,16 @@ int main(int argc, char **argv)
      * O simulador é dirigido por stdin; o comando `tile` cobre o que o dedo
      * faria. Reabilitar o mouse aqui reintroduz a indeterminação e invalida a
      * folha de contato. */
+
+    /* O personagem é escolhido NO BOOT, como na placa — lá vem da NVS, aqui de
+     * WISP_MASCOT. Não há comando para trocar em tempo de execução, e isso é
+     * deliberado: reconstruir a tela deixaria os objetos compartilhados de um
+     * personagem (as interrogações do Terminal, criadas uma vez) apontando para
+     * memória liberada. Trocar de personagem é relançar:
+     *
+     *     WISP_MASCOT=pixel ./sim/build/wisp-sim
+     */
+    mascote_escolher(mascote_por_nome(getenv("WISP_MASCOT")));
 
     /* ui.h: ui_create() precisa ser chamada com o mutex do LVGL na mão. */
     bsp_display_lock(0);

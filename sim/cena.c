@@ -16,6 +16,28 @@
 
 static wisp_data_t d;
 
+/* Tradução própria de nome para estado, em vez de ui_state_from_text().
+ *
+ * Aquela função é o parser do campo `st` do bridge, e por isso NÃO conhece
+ * "offline": offline é estado interno da placa, "ainda não conectou", e nunca
+ * chega pela rede. Pedir `offline` ao simulador caía silenciosamente em
+ * WISP_IDLE — a folha de contato capturava idle duas vezes e o oitavo estado
+ * nunca era visto. */
+static const char *NOMES[WISP_COUNT] = {
+    [WISP_IDLE] = "idle",       [WISP_WORKING] = "working",
+    [WISP_TOOL] = "tool",       [WISP_ASKING]  = "asking",
+    [WISP_WAITING] = "waiting", [WISP_DONE]    = "done",
+    [WISP_ERROR] = "error",     [WISP_OFFLINE] = "offline",
+};
+
+static wisp_state_t estado_de(const char *nome)
+{
+    for (int i = 0; i < WISP_COUNT; i++)
+        if (NOMES[i] && !strcmp(NOMES[i], nome)) return (wisp_state_t) i;
+    printf("W (sim) estado \"%s\" nao existe — usando idle\n", nome);
+    return WISP_IDLE;
+}
+
 /* Nomes de projeto e detalhes fixos, escolhidos para exercitar a largura do
  * texto: um curto, um longo, um com número. É neles que o layout de 4 sessões
  * costuma estourar. */
@@ -65,6 +87,7 @@ void cena_ajuda(void)
     printf("comandos: n <1-4> | s <estado> [i] | todos <estado> | rest | wake\n"
            "          tile <0|1> | bat <pct|-1> | lim | nolim\n"
            "          shot <arquivo.bmp> | quit | ?\n"
+           "personagem: escolhido no boot — WISP_MASCOT=pixel ./sim/build/wisp-sim\n"
            "estados : idle working tool asking waiting done error offline\n");
 }
 
@@ -90,9 +113,9 @@ void cena_comando(const char *linha)
         d.session_count = q < 1 ? 1 : (q > WISP_MAX_SESSIONS ? WISP_MAX_SESSIONS : q);
     } else if (!strcmp(cmd, "s")) {
         if (i < 0 || i >= WISP_MAX_SESSIONS) i = 0;
-        d.sessions[i].state = ui_state_from_text(arg);
+        d.sessions[i].state = estado_de(arg);
     } else if (!strcmp(cmd, "todos")) {
-        wisp_state_t e = ui_state_from_text(arg);
+        wisp_state_t e = estado_de(arg);
         for (int k = 0; k < WISP_MAX_SESSIONS; k++) d.sessions[k].state = e;
     } else if (!strcmp(cmd, "rest")) {
         /* Repouso exige LISTA VAZIA além do silêncio: ui.c:1313-1315 monta a

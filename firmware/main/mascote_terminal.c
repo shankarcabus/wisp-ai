@@ -718,26 +718,3 @@ const personagem_t MASCOTE_TERMINAL = {
     .animar     = terminal_animar,
     .dispor     = terminal_dispor,
 };
-
-/* ————————————————————————————————————————————————
- *  O registro de personagens
- * ————————————————————————————————————————————————
- * Vive aqui, e não em ui.c, porque é a lista de personagens e não parte do
- * layout. Índice 0 é o padrão. */
-const personagem_t *const MASCOTES[] = { &MASCOTE_TERMINAL };
-const int MASCOTES_QTD = (int) (sizeof(MASCOTES) / sizeof(MASCOTES[0]));
-
-static const personagem_t *g_ativo = &MASCOTE_TERMINAL;
-
-const personagem_t *mascote_por_nome(const char *nome)
-{
-    if (!nome || !*nome) return MASCOTES[0];
-    for (int i = 0; i < MASCOTES_QTD; i++)
-        if (strcmp(MASCOTES[i]->nome, nome) == 0) return MASCOTES[i];
-    ESP_LOGW(TAG, "personagem \"%s\" nao existe — usando %s",
-             nome, MASCOTES[0]->nome);
-    return MASCOTES[0];
-}
-
-void mascote_escolher(const personagem_t *p) { if (p) g_ativo = p; }
-const personagem_t *mascote_ativo(void) { return g_ativo; }
