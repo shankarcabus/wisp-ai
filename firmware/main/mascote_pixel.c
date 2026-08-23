@@ -66,9 +66,13 @@ static const char *TAG = "pixel";
 #define C_OLHO   lv_color_make( 17,  17,  17)
 
 typedef enum { OLHO_NORMAL, OLHO_ARCO, OLHO_X, OLHO_TRISTE } olho_t;
+typedef enum { BOCA_NENHUMA, BOCA_ABERTA, BOCA_TRISTE } boca_t;
 
 typedef struct {
     olho_t  olho;
+    boca_t  boca;
+    bool    sobrancelha;  /* preocupada: ponta INTERNA para cima */
+    bool    pisca;
     uint8_t respira;      /* amplitude da respiração, em 256-avos de escala */
     int8_t  inclina;      /* graus, fixo */
 } pixel_alvo_t;
@@ -76,20 +80,26 @@ typedef struct {
 /* Um por estado, na ordem de wisp_state_t (ui.h). Os oito estados da folha de
  * referência caem um a um nos do Wisp. */
 static const pixel_alvo_t ALVO[WISP_COUNT] = {
-    /*                    olho       resp  incl */
-    [WISP_IDLE]    = {OLHO_NORMAL,   6,   0},
-    [WISP_WORKING] = {OLHO_NORMAL,   4,   0},
-    [WISP_TOOL]    = {OLHO_NORMAL,   3,   0},
-    [WISP_ASKING]  = {OLHO_NORMAL,   7,   0},
-    [WISP_WAITING] = {OLHO_TRISTE,  10,   0},
-    [WISP_DONE]    = {OLHO_ARCO,     9,   0},
-    [WISP_ERROR]   = {OLHO_TRISTE,   3,  -4},
-    [WISP_OFFLINE] = {OLHO_X,        2,   0},
+    /*                    olho        boca          sobr   pisca resp incl */
+    [WISP_IDLE]    = {OLHO_NORMAL, BOCA_NENHUMA, false, true,   6,   0},
+    [WISP_WORKING] = {OLHO_NORMAL, BOCA_NENHUMA, false, true,   4,   0},
+    [WISP_TOOL]    = {OLHO_NORMAL, BOCA_NENHUMA, false, true,   3,   0},
+    [WISP_ASKING]  = {OLHO_NORMAL, BOCA_NENHUMA, false, true,   7,   0},
+    [WISP_WAITING] = {OLHO_TRISTE, BOCA_NENHUMA, true,  true,  10,   0},
+    [WISP_DONE]    = {OLHO_ARCO,   BOCA_ABERTA,  false, false,  9,   0},
+    [WISP_ERROR]   = {OLHO_TRISTE, BOCA_TRISTE,  true,  false,  3,  -4},
+    [WISP_OFFLINE] = {OLHO_X,      BOCA_NENHUMA, false, false,  2,   0},
 };
 
-/* Onze objetos: três do corpo, quatro de relevo, dois de olho e duas barras que
- * só aparecem no X de `offline`. A contagem importa porque é ela que a medição
- * na placa vai cobrar. */
+/* `done` não pisca porque os olhos já estão em arco: piscar um olho fechado não
+ * comunica nada. `error` e `offline` não piscam porque a imobilidade é parte do
+ * que eles dizem. */
+#define PISCADA_MS 170
+
+/* Dezesseis objetos: três do corpo, quatro de relevo, dois de olho, duas barras
+ * do X, duas sobrancelhas e três de boca. A contagem importa porque é ela que a
+ * medição na placa vai cobrar — para comparação, o Terminal vetorial usa cerca
+ * de vinte e anima bem nesta placa. */
 typedef struct {
     /* O contêiner transparente que o layout move e escala. Fica aqui, e não num
      * global, porque há um bloco privado por mascote e um global serviria a um
@@ -104,6 +114,13 @@ typedef struct {
     lv_obj_t *sombra[2];     /* baixo, direita */
     lv_obj_t *olho[2];
     lv_obj_t *cruz[2];       /* a segunda barra do X */
+    lv_obj_t *sobrancelha[2];
+    /* A boca em três peças: o centro mais as duas pontas. É o que permite a
+     * curva virada para baixo de `error` — em pixel art, curva com dois pixels
+     * de espessura é degrau, e um único retângulo rotacionado só dá uma boca
+     * torta, não uma triste. */
+    lv_obj_t *boca, *boca_ponta[2];
+    uint32_t  prox_piscada, inicio_piscada;
     int16_t   p_d;           /* guarda: só refaz geometria se `d` mudou */
     /* `int`, e não olho_t, porque -1 é o valor de "invalidado" que força a
      * reaplicação. Enum recebendo -1 é comportamento que depende do
@@ -179,21 +196,50 @@ static void aplicar_olho(pixel_t *p, olho_t o, int16_t d)
     if (p->p_olho == (int) o) return;
     p->p_olho = (int) o;
 
+    /* Prólogo: devolve as duas peças de cada olho ao estado NEUTRO — visível,
+     * sem rotação, no tamanho e na POSIÇÃO padrão.
+     *
+     * Isto não é zelo, é a correção de um erro que apareceu três vezes: o arco
+     * desloca as barras na horizontal e encolhe a segunda para formar o `^`, e o
+     * X seguinte herdava as duas coisas — saía como um par de ticks, depois como
+     * uma flecha. Cada caso tem de partir do MESMO ponto; quando o prólogo zera
+     * só parte do estado, a aparência passa a depender do estado ANTERIOR, e o
+     * bug só aparece na transição, nunca numa captura isolada. */
     for (int i = 0; i < 2; i++) {
+        const int16_t cx = (i ? 1 : -1) * U(d, 4), cy = -U(d, 1);
         lv_obj_remove_flag(p->olho[i], LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(p->cruz[i], LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_transform_rotation(p->olho[i], 0, 0);
+        lv_obj_set_style_transform_rotation(p->cruz[i], 0, 0);
         lv_obj_set_size(p->olho[i], U(d, 2), U(d, 5));
+        lv_obj_set_size(p->cruz[i], U(d, 5), U(d, 2));
+        lv_obj_align(p->olho[i], LV_ALIGN_CENTER, cx, cy);
+        lv_obj_align(p->cruz[i], LV_ALIGN_CENTER, cx, cy);
     }
 
     switch (o) {
     case OLHO_NORMAL:
         break;                                   /* o padrão da geometria */
     case OLHO_ARCO:
-        /* Barra baixa e larga. A 2px de espessura não existe curva: em pixel
-         * art é isto que lê como olho fechado de contentamento. */
-        for (int i = 0; i < 2; i++)
-            lv_obj_set_size(p->olho[i], U(d, 4), U(d, 1));
+        /* O `^` da referência, feito de duas barras inclinadas que se encontram
+         * no alto — as MESMAS duas peças que formam o X de `offline`, em outro
+         * ângulo. Uma barra reta e larga foi a primeira tentativa e lia como
+         * olho fechado de sono, não de contentamento: o que faz o olho sorrir é
+         * a ponta virada para cima. */
+        for (int i = 0; i < 2; i++) {
+            const int16_t bl = U(d, 3), bh = U(d, 1);
+            const int16_t cx = (i ? 1 : -1) * U(d, 4);
+            lv_obj_t *meia[2] = {p->olho[i], p->cruz[i]};
+            for (int k = 0; k < 2; k++) {
+                lv_obj_remove_flag(meia[k], LV_OBJ_FLAG_HIDDEN);
+                lv_obj_set_size(meia[k], bl, bh);
+                lv_obj_set_style_transform_pivot_x(meia[k], bl / 2, 0);
+                lv_obj_set_style_transform_pivot_y(meia[k], bh / 2, 0);
+                lv_obj_set_style_transform_rotation(meia[k], k ? 220 : -220, 0);
+                lv_obj_align(meia[k], LV_ALIGN_CENTER,
+                             cx + (k ? 1 : -1) * bl / 2, -U(d, 1));
+            }
+        }
         break;
     case OLHO_TRISTE:
         /* Mais baixo e mais curto. Sozinho já entristece; a sobrancelha é o
@@ -225,6 +271,105 @@ static void aplicar_olho(pixel_t *p, olho_t o, int16_t d)
     }
 }
 
+/* A diferença entre parecer PREOCUPADO e parecer BRAVO é qual ponta sobe.
+ *
+ * Sobe a ponta INTERNA — a que fica perto do centro da cara. Invertido, o
+ * personagem culpa quem está olhando, e o `error` do Wisp existe justamente
+ * para dizer o contrário: a falha não é sua. O Terminal aprendeu isso primeiro
+ * e registrou no `sob_invertida` da tabela dele. */
+static void aplicar_sobrancelha(pixel_t *p, bool mostrar, int16_t d)
+{
+    for (int i = 0; i < 2; i++) {
+        if (!mostrar) {
+            lv_obj_add_flag(p->sobrancelha[i], LV_OBJ_FLAG_HIDDEN);
+            continue;
+        }
+        const int16_t sl = U(d, 4), sh = U(d, 1);
+        lv_obj_remove_flag(p->sobrancelha[i], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_size(p->sobrancelha[i], sl, sh);
+        lv_obj_align(p->sobrancelha[i], LV_ALIGN_CENTER,
+                     (i ? 1 : -1) * U(d, 4), -U(d, 6));
+        /* Pivô centrado: sem isso a barra gira em torno do canto e sai do
+         * lugar, a mesma armadilha do X de `offline`. */
+        lv_obj_set_style_transform_pivot_x(p->sobrancelha[i], sl / 2, 0);
+        lv_obj_set_style_transform_pivot_y(p->sobrancelha[i], sh / 2, 0);
+        /* O sinal: rotação positiva no LVGL desce a ponta DIREITA. Na
+         * sobrancelha esquerda (i=0) a ponta interna é a direita, então ela
+         * precisa de ângulo NEGATIVO para levantar a de dentro; na direita é o
+         * contrário. Invertido, saem duas sobrancelhas bravas — foi o que
+         * apareceu na primeira tentativa, e "bravo" é o oposto do que o estado
+         * `error` deste projeto quer dizer. */
+        lv_obj_set_style_transform_rotation(p->sobrancelha[i],
+                                            i ? 160 : -160, 0);   /* ±16° */
+    }
+}
+
+static void aplicar_boca(pixel_t *p, boca_t b, int16_t d)
+{
+    lv_obj_t *tudo[] = {p->boca, p->boca_ponta[0], p->boca_ponta[1]};
+    if (b == BOCA_NENHUMA) {
+        for (int i = 0; i < 3; i++) lv_obj_add_flag(tudo[i], LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    lv_obj_remove_flag(p->boca, LV_OBJ_FLAG_HIDDEN);
+    if (b == BOCA_ABERTA) {
+        /* Boca aberta de alegria, em pixel art, é um bloco cheio. As pontas
+         * não entram: elas existem para a curva do `error`. */
+        for (int i = 0; i < 2; i++)
+            lv_obj_add_flag(p->boca_ponta[i], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_size(p->boca, U(d, 7), U(d, 3));
+        lv_obj_align(p->boca, LV_ALIGN_CENTER, 0, U(d, 4));
+        /* Raio só embaixo seria o ideal — o LVGL não separa por canto, então o
+         * bloco arredondado inteiro é a aproximação. Larga o suficiente para
+         * ler como boca aberta e não como pastilha. */
+        lv_obj_set_style_radius(p->boca, U(d, 1), 0);
+        return;
+    }
+
+    /* Triste é "∩": o centro ALTO e as duas pontas um degrau ABAIXO.
+     *
+     * O contrário — centro embaixo, pontas em cima — é "U", que é sorriso. Foi
+     * o que eu desenhei primeiro, e o resultado foi um personagem sorrindo no
+     * estado de falha. A curvatura é o que separa contentamento de aflição, e
+     * ela não perdoa o sinal trocado. */
+    lv_obj_set_style_radius(p->boca, 0, 0);
+    const int16_t esp = U(d, 1);
+    lv_obj_set_size(p->boca, U(d, 3), esp);
+    lv_obj_align(p->boca, LV_ALIGN_CENTER, 0, U(d, 4));
+    for (int i = 0; i < 2; i++) {
+        lv_obj_remove_flag(p->boca_ponta[i], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_size(p->boca_ponta[i], esp, esp);
+        lv_obj_align(p->boca_ponta[i], LV_ALIGN_CENTER,
+                     (i ? 1 : -1) * U(d, 2), U(d, 4) + esp);
+    }
+}
+
+/* Devolve true enquanto o olho está fechado.
+ *
+ * Quem chama decide: piscando, mexe na altura do olho e INVALIDA a guarda de
+ * aplicar_olho, para que ela restaure a forma no quadro seguinte. Se as duas
+ * coisas rodassem no mesmo quadro, a guarda veria o mesmo estado de antes e o
+ * olho ficaria fechado para sempre. */
+static bool piscando(pixel_t *p, const pixel_alvo_t *a, uint32_t agora)
+{
+    if (!a->pisca) return false;
+    if (p->prox_piscada == 0) p->prox_piscada = agora + 2600;
+
+    if (agora >= p->prox_piscada && p->inicio_piscada == 0) {
+        p->inicio_piscada = agora;
+        /* Intervalo irregular, 2,2 a 4,6s. Cadência exata lê como pisca-pisca
+         * de aparelho, não como olho. */
+        p->prox_piscada = agora + 2200 + (agora % 2400);
+    }
+    if (p->inicio_piscada) {
+        if (agora - p->inicio_piscada < PISCADA_MS) return true;
+        p->inicio_piscada = 0;
+        p->p_olho = -1;          /* força aplicar_olho a restaurar */
+    }
+    return false;
+}
+
 static void pixel_criar(lv_obj_t *pai, mascote_t *m)
 {
     pixel_t *p = lv_malloc_zeroed(sizeof(pixel_t));
@@ -249,7 +394,13 @@ static void pixel_criar(lv_obj_t *pai, mascote_t *m)
         p->olho[i] = retangulo(p->raiz, C_OLHO);
         p->cruz[i] = retangulo(p->raiz, C_OLHO);
         lv_obj_add_flag(p->cruz[i], LV_OBJ_FLAG_HIDDEN);
+        p->sobrancelha[i] = retangulo(p->raiz, C_OLHO);
+        lv_obj_add_flag(p->sobrancelha[i], LV_OBJ_FLAG_HIDDEN);
+        p->boca_ponta[i] = retangulo(p->raiz, C_OLHO);
+        lv_obj_add_flag(p->boca_ponta[i], LV_OBJ_FLAG_HIDDEN);
     }
+    p->boca = retangulo(p->raiz, C_OLHO);
+    lv_obj_add_flag(p->boca, LV_OBJ_FLAG_HIDDEN);
 
     p->p_d = -1;
     p->p_olho = -1;
@@ -263,7 +414,16 @@ static void pixel_animar(mascote_t *m, uint32_t agora, bool sozinho)
 
     const pixel_alvo_t *a = &ALVO[m->alvo];
     geometria(p, m->d);
-    aplicar_olho(p, a->olho, m->d);
+
+    if (piscando(p, a, agora)) {
+        for (int i = 0; i < 2; i++)
+            lv_obj_set_height(p->olho[i], U(m->d, 1));
+        p->p_olho = -1;
+    } else {
+        aplicar_olho(p, a->olho, m->d);
+    }
+    aplicar_sobrancelha(p, a->sobrancelha, m->d);
+    aplicar_boca(p, a->boca, m->d);
 
     /* Respiração com o VOLUME CONSERVADO: o que estica na vertical encolhe na
      * horizontal. Sem isso o boneco não respira, ele infla.
