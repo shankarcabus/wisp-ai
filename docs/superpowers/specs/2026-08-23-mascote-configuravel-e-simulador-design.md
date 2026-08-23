@@ -198,12 +198,14 @@ Efeito colateral desejado: `ui.c` passa a ser exercitável no host, o que hoje n
 2. **Extração do registro de personagens.** Refatoração pura — o Terminal tem de
    sair igual, e o simulador serve de conferência lado a lado.
 3. **O personagem pixel**, iterado no simulador.
-4. **Medição na placa.**
-5. **Seleção por NVS.**
+4. **Seleção por NVS.**
+5. **Medição na placa.**
 
 Os passos 1 e 2 são reversíveis e não mudam nada visível. O 3 é onde está o
-trabalho de desenho. O 4 é a única coisa que pode invalidar o desenho, e por isso
-vem antes do 5.
+trabalho de desenho. O 5 é a única coisa que pode invalidar o desenho — e vem por
+último não por ser menos importante, mas porque é a seleção do passo 4 que
+permite gravar a placa com o personagem novo para medi-lo. Nada é dado como
+pronto antes dos números do passo 5.
 
 ## Verificação
 
