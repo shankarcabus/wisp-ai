@@ -374,18 +374,28 @@ uint8_t ui_tamanho_from_text(const char *s)
     return WISP_TAM_MEDIO;
 }
 
+/* Os nomes CRUS dos estados — os que viajam no JSON e nomeiam arquivos, não os
+ * rótulos que aparecem na tela (esses são o NOME/NOME_PT acima). Uma tabela só,
+ * lida nos dois sentidos: o simulador tinha uma cópia idêntica desta, feita
+ * porque a decodificação antiga não conhecia "offline". */
+static const char *CRU[WISP_COUNT] = {
+    [WISP_IDLE]    = "idle",    [WISP_WORKING] = "working",
+    [WISP_TOOL]    = "tool",    [WISP_ASKING]  = "asking",
+    [WISP_WAITING] = "waiting", [WISP_DONE]    = "done",
+    [WISP_ERROR]   = "error",   [WISP_OFFLINE] = "offline",
+};
+
 int ui_state_index(const char *s)
 {
-    static const char *NOMES[WISP_COUNT] = {
-        [WISP_IDLE]    = "idle",    [WISP_WORKING] = "working",
-        [WISP_TOOL]    = "tool",    [WISP_ASKING]  = "asking",
-        [WISP_WAITING] = "waiting", [WISP_DONE]    = "done",
-        [WISP_ERROR]   = "error",   [WISP_OFFLINE] = "offline",
-    };
     if (!s) return -1;
     for (int i = 0; i < WISP_COUNT; i++)
-        if (NOMES[i] && !strcmp(s, NOMES[i])) return i;
+        if (CRU[i] && !strcmp(s, CRU[i])) return i;
     return -1;
+}
+
+const char *ui_state_name(wisp_state_t s)
+{
+    return (s < WISP_COUNT && CRU[s]) ? CRU[s] : "idle";
 }
 
 /* Desconhecido vira IDLE, que é o certo para o campo "st" de uma sessão: um
@@ -776,6 +786,35 @@ void ui_create(void)
 /* ————————————————————————————————————————————————
  *  Atualização
  * ———————————————————————————————————————————————— */
+int ui_sessao_dominante(const wisp_data_t *d)
+{
+    /* Prioridade: quem PAROU esperando voce fala primeiro. Trabalhando pode
+     * aguardar; travado, nao.
+     *
+     * Devolve ÍNDICE e não estado porque o ui_update precisa do índice para
+     * marcar com "> " qual sessão o mascote representa. Quem quer o estado tira
+     * do índice, que é uma indireção a menos do que o contrário.
+     *
+     * É pública para o main.c decidir o SOM a partir da mesma escolha que decide
+     * a cara do mascote — duas regras de prioridade seria como se cria
+     * discordância entre o que se vê e o que se ouve. A chamada de som não pode
+     * morar aqui: o simulador compila este arquivo e não tem áudio para linkar.
+     *
+     * Nenhum estado da lista presente devolve 0, e é assim que o offline chega
+     * ao som: quando o bridge cai, quem monta a sessão sintética põe WISP_OFFLINE
+     * em sessions[0], que não está na URGENCIA e cai justamente no 0. */
+    static const wisp_state_t URGENCIA[] = {
+        WISP_ASKING, WISP_WAITING, WISP_ERROR,
+        WISP_TOOL, WISP_WORKING, WISP_DONE,
+    };
+    if (!d || d->session_count <= 0) return -1;
+    for (size_t u = 0; u < sizeof(URGENCIA)/sizeof(URGENCIA[0]); u++)
+        for (int k = 0; k < d->session_count; k++)
+            if (d->sessions[k].state == URGENCIA[u]) return k;
+    return 0;
+}
+
+
 void ui_update(const wisp_data_t *d)
 {
     if (!d) return;
@@ -899,19 +938,8 @@ void ui_update(const wisp_data_t *d)
          * pegaria lixo — quem chama passa um global que guarda a última
          * sessão vista, e a tela exibiria um fantasma de algo já encerrado. */
         static const wisp_session_t VAZIA = {.state = WISP_IDLE};
-        /* Prioridade: quem PAROU esperando voce fala primeiro. Trabalhando
-         * pode aguardar; travado, nao. */
-        static const wisp_state_t URGENCIA[] = {
-            WISP_ASKING, WISP_WAITING, WISP_ERROR,
-            WISP_TOOL, WISP_WORKING, WISP_DONE,
-        };
-        int esc = 0;
-        for (size_t u = 0; u < sizeof(URGENCIA)/sizeof(URGENCIA[0]); u++) {
-            bool achou = false;
-            for (int k = 0; k < d->session_count; k++)
-                if (d->sessions[k].state == URGENCIA[u]) { esc = k; achou = true; break; }
-            if (achou) break;
-        }
+        const int dom = ui_sessao_dominante(d);
+        int esc = dom < 0 ? 0 : dom;
         for (int i = 0; i < n; i++) {
             const wisp_session_t *s = sem_sessao ? &VAZIA : &d->sessions[esc];
             mascote_t *m = &g_m[i];

@@ -137,6 +137,11 @@ const wisp_cfg_t *ui_ajustes(void);
  * num lugar só. Dois lugares decidindo isso é como se cria discordância. */
 void ui_personagem(const char *nome);
 
+/* Índice da sessão mais urgente, ou -1 se não há sessão. A prioridade é a
+ * mesma que escolhe a cara do mascote — de propósito: o que se vê e o que se
+ * ouve não podem discordar. */
+int ui_sessao_dominante(const wisp_data_t *d);
+
 wisp_state_t ui_state_from_text(const char *s);
 
 /* Índice do estado pelo nome, ou -1 se não é um nome de estado.
@@ -146,6 +151,9 @@ wisp_state_t ui_state_from_text(const char *s);
  * estados: "offline", ou um nome digitado errado, ligaria o `idle` sem ninguém
  * ter pedido. Quem monta bitmask usa esta; quem lê uma sessão usa a outra. */
 int ui_state_index(const char *s);
+
+/* O caminho inverso: o nome CRU do estado, o que viaja no JSON. Nunca nulo. */
+const char *ui_state_name(wisp_state_t s);
 
 /* "low"/"medium"/"high" -> degrau. Desconhecido vira médio. */
 uint8_t ui_volume_from_text(const char *s);

@@ -22,17 +22,10 @@ static wisp_data_t d;
  * chega pela rede. Pedir `offline` ao simulador caía silenciosamente em
  * WISP_IDLE — a folha de contato capturava idle duas vezes e o oitavo estado
  * nunca era visto. */
-static const char *NOMES[WISP_COUNT] = {
-    [WISP_IDLE] = "idle",       [WISP_WORKING] = "working",
-    [WISP_TOOL] = "tool",       [WISP_ASKING]  = "asking",
-    [WISP_WAITING] = "waiting", [WISP_DONE]    = "done",
-    [WISP_ERROR] = "error",     [WISP_OFFLINE] = "offline",
-};
-
 static wisp_state_t estado_de(const char *nome)
 {
-    for (int i = 0; i < WISP_COUNT; i++)
-        if (NOMES[i] && !strcmp(NOMES[i], nome)) return (wisp_state_t) i;
+    const int i = ui_state_index(nome);
+    if (i >= 0) return (wisp_state_t) i;
     printf("W (sim) estado \"%s\" nao existe — usando idle\n", nome);
     return WISP_IDLE;
 }
@@ -154,7 +147,7 @@ static void exportar_sprite(const char *pasta)
         for (int k = 0; k < ASSENTAR_MAX; k++) { relogio_avancar(); lv_timer_handler(); }
 
         char caminho[600];
-        snprintf(caminho, sizeof(caminho), "%s/%s.tiff", pasta, NOMES[e]);
+        snprintf(caminho, sizeof(caminho), "%s/%s.tiff", pasta, ui_state_name(e));
         if (captura_tiff(caminho, SPRITE_X0, SPRITE_Y0, SPRITE_LADO, SPRITE_LADO)) ok++;
     }
 
@@ -179,7 +172,7 @@ void cena_ajuda(void)
      * extenso aqui, o que fazia a ajuda poder discordar do que o comando aceita
      * — e a ajuda é onde alguém vai olhar quando o comando não funcionar. */
     printf("estados : ");
-    for (int i = 0; i < WISP_COUNT; i++) printf("%s%s", i ? " " : "", NOMES[i]);
+    for (int i = 0; i < WISP_COUNT; i++) printf("%s%s", i ? " " : "", ui_state_name((wisp_state_t) i));
     printf("\n");
 }
 
