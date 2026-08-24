@@ -27,12 +27,24 @@ enum Ajustes {
         var rotulo: String { rawValue }
     }
 
+    /// Três degraus em vez de um controle contínuo: um alto-falante deste
+    /// tamanho, numa mesa qualquer, não tem volume certo universal — mas também
+    /// não tem cem valores distinguíveis. Os números que a placa aplica vivem no
+    /// firmware; o painel publica o degrau.
+    enum Volume: String, CaseIterable {
+        case low, medium, high
+        var rotulo: String { rawValue }
+    }
+
     // Prefixadas, para não colidir com as chaves que já existem no UserDefaults
     // deste app: `mascot`, `floating`, `fetchLimits`.
     static let kBoardSize    = "ui.board.size"
     static let kBoardAction  = "ui.board.action_label"
     static let kBoardProject = "ui.board.project_label"
     static let kBoardLang    = "ui.board.language"
+    static let kBoardSoundOn     = "ui.board.sound.enabled"
+    static let kBoardSoundStates = "ui.board.sound.states"
+    static let kBoardVolume      = "ui.board.sound.volume"
     static let kMacSize      = "ui.mac.size"
     static let kSoundOn      = "ui.mac.sound.enabled"
     static let kSoundStates  = "ui.mac.sound.states"
@@ -80,6 +92,32 @@ enum Ajustes {
         get { UserDefaults.standard.string(forKey: kBoardLang) ?? "en" }
         set { gravar(newValue, kBoardLang) }
     }
+    /// A placa nasce MUDA, e o Mac não. As duas listas são independentes de
+    /// propósito — o caso que isso serve é o Mac calado com a placa avisando —,
+    /// então ligar as duas por padrão faria o mesmo aviso soar duas vezes para
+    /// quem só atualizou o app. O padrão vive aqui e no UI_DEFAULTS do bridge.
+    static var boardSoundEnabled: Bool {
+        get { bool(kBoardSoundOn, false) }
+        set { gravar(newValue, kBoardSoundOn) }
+    }
+
+    /// Os mesmos dois estados que o Mac usa de padrão, e pela mesma razão: são
+    /// os que significam "o Claude está te esperando". Só passam a valer quando
+    /// alguém liga o som da placa.
+    static var boardSoundStates: Set<String> {
+        get {
+            guard let a = UserDefaults.standard.array(forKey: kBoardSoundStates) as? [String]
+            else { return ["asking", "waiting"] }
+            return Set(a)
+        }
+        set { gravar(newValue.sorted(), kBoardSoundStates) }
+    }
+
+    static var boardVolume: Volume {
+        get { Volume(rawValue: UserDefaults.standard.string(forKey: kBoardVolume) ?? "") ?? .medium }
+        set { gravar(newValue.rawValue, kBoardVolume) }
+    }
+
     static var soundEnabled: Bool {
         get { bool(kSoundOn, true) }
         set { gravar(newValue, kSoundOn) }
@@ -117,7 +155,10 @@ enum Ajustes {
             "board": ["size": boardSize.rawValue,
                       "action_label": boardAction,
                       "project_label": boardProject,
-                      "language": boardLanguage],
+                      "language": boardLanguage,
+                      "sound": ["enabled": boardSoundEnabled,
+                                "states": boardSoundStates.sorted(),
+                                "volume": boardVolume.rawValue]],
             "mac": ["size": macSize.rawValue,
                     "sound": ["enabled": soundEnabled,
                               "states": soundStates.sorted()]],
