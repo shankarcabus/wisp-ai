@@ -52,12 +52,24 @@ UI_FILE = FOLDER / "ui.json"
 # qual idioma esperar é um arquivo que se erra ao editar.
 UI_DEFAULTS = {
     "character": "",
+    # OS DOIS LADOS TOCAM, E CADA UM TEM A SUA LISTA
+    #
+    # Este comentário já disse que o som era só do Mac porque a placa C6 não
+    # tinha áudio utilizável. Era verdade de OUTRA placa: o amplificador atrás
+    # de um expansor é a AMOLED 1.8" C6, e nesta uma varredura do barramento não
+    # acha expansor nenhum — acha o ES8311 em 0x18, que é o codec.
+    #
+    # As listas são independentes de propósito: o caso que isso serve é o Mac
+    # calado com a placa avisando. E a placa nasce MUDA, ao contrário do Mac —
+    # se nascesse ligada nos mesmos estados, quem atualizasse passaria a ouvir o
+    # mesmo aviso duas vezes sem ter pedido nada.
     "board": {"size": "medium", "action_label": True,
-              "project_label": True, "language": "en"},
-    # O som é da seção `mac` porque só o Mac toca: a placa C6 não tem áudio
-    # utilizável — sem BOARD_HAS_SOUND, sem pinos I2S mapeados, e o amplificador
-    # atrás de um expansor que ninguém dirige. O padrão liga nos dois estados que
-    # significam "o Claude está te esperando".
+              "project_label": True, "language": "en",
+              "sound": {"enabled": False,
+                        "states": ["asking", "waiting"],
+                        "volume": "medium"}},
+    # O padrão do Mac liga nos dois estados que significam "o Claude está te
+    # esperando".
     "mac": {"size": "medium",
             "sound": {"enabled": True, "states": ["asking", "waiting"]}},
 }

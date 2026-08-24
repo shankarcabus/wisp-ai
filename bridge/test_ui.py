@@ -44,7 +44,10 @@ def main():
     PADRAO = {
         "character": "",
         "board": {"size": "medium", "action_label": True,
-                  "project_label": True, "language": "en"},
+                  "project_label": True, "language": "en",
+                  "sound": {"enabled": False,
+                            "states": ["asking", "waiting"],
+                            "volume": "medium"}},
         "mac": {"size": "medium",
                 "sound": {"enabled": True, "states": ["asking", "waiting"]}},
     }
@@ -60,26 +63,40 @@ def main():
     checa("migracao: le o mascot antigo, resto no padrao", config.ui(), esperado)
 
     limpa()
-    config.UI_FILE.write_text(json.dumps({
+    COMPLETO = {
         "character": "terminal",
         "board": {"size": "large", "action_label": False,
-                  "project_label": True, "language": "pt"},
+                  "project_label": True, "language": "pt",
+                  "sound": {"enabled": True, "states": ["error"],
+                            "volume": "high"}},
         "mac": {"size": "small",
                 "sound": {"enabled": False, "states": ["done"]}},
-    }))
-    checa("ui.json completo", config.ui(), {
-        "character": "terminal",
-        "board": {"size": "large", "action_label": False,
-                  "project_label": True, "language": "pt"},
-        "mac": {"size": "small",
-                "sound": {"enabled": False, "states": ["done"]}},
-    })
+    }
+    config.UI_FILE.write_text(json.dumps(COMPLETO))
+    checa("ui.json completo", config.ui(), COMPLETO)
 
     limpa()
     config.UI_FILE.write_text(json.dumps({"board": {"language": "pt"}}))
     esperado = json.loads(json.dumps(PADRAO))
     esperado["board"]["language"] = "pt"
     checa("ui.json parcial: o que falta cai no padrao", config.ui(), esperado)
+
+    # O ui.json escrito pela versao ANTERIOR do app nao tem board.sound. O merge
+    # e recursivo, entao a secao nasce do padrao sem apagar o que o usuario ja
+    # escolheu ao lado dela — e nasce MUDA, para ninguem passar a ouvir o mesmo
+    # aviso duas vezes so por atualizar.
+    limpa()
+    config.UI_FILE.write_text(json.dumps({
+        "board": {"size": "large", "language": "pt"},
+        "mac": {"sound": {"enabled": False, "states": []}},
+    }))
+    cfg = config.ui()
+    checa("ui.json antigo mantem o size", cfg["board"]["size"], "large")
+    checa("ui.json antigo mantem o idioma", cfg["board"]["language"], "pt")
+    checa("ui.json antigo nasce mudo na placa", cfg["board"]["sound"]["enabled"], False)
+    checa("ui.json antigo ganha volume medio", cfg["board"]["sound"]["volume"], "medium")
+    checa("ui.json antigo preserva o som do Mac", cfg["mac"]["sound"]["enabled"], False)
+    checa("ui.json antigo preserva a lista do Mac", cfg["mac"]["sound"]["states"], [])
 
     limpa()
     config.UI_FILE.write_text("{ isto nao e json")
