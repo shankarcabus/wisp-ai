@@ -50,6 +50,12 @@ esp_err_t bsp_i2c_init(void);
 /* NULL se o barramento ainda não subiu. */
 i2c_master_bus_handle_t bsp_i2c_get_handle(void);
 
+/* Liga o rail que alimenta o amplificador de áudio (ALDO2, 3,3 V).
+ *
+ * É o "enable" do amplificador nesta placa, porque GPIO de enable não existe.
+ * Idempotente e independente do display, que vive no ALDO3. */
+esp_err_t bsp_amp_power(bool on);
+
 /* Mutex do LVGL. Assinatura mantida igual à do BSP oficial, com as duas
  * armadilhas que o main.c documenta: passe -1 para esperar indefinidamente
  * (com 0 o lock falha na hora e o LVGL roda sem proteção).

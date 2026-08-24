@@ -1126,6 +1126,7 @@ void app_main(void)
      * acontece igual no firmware sem PMIC nenhum (medido, 6/8 contra 4/8 em
      * 8 boots cada — indistinguivel). Nao havia o que otimizar aqui. */
     s_pmic_ok = pmic_start(bsp_i2c_get_handle());
+
     xTaskCreate(tarefa_botoes, "botoes", 2560, NULL, 3, NULL);
     if (s_imu_ok) {
         xTaskCreate(tarefa_orientacao, "orient", 3072, NULL, 3, NULL);

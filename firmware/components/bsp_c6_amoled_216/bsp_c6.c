@@ -59,6 +59,17 @@ static const char *TAG = "bsp_c6";
 #define AXP_ALDO3_BIT       2
 #define AXP_ALDO3_3V3       0x1C   /* (3300 - 500) / 100 */
 
+/* ALDO2 alimenta o amplificador NS4150B, e é tudo que existe de "enable" do
+ * amplificador nesta placa: não há GPIO nenhum para ele (a irmã S3 usa o pino
+ * 46 e a de 1.8" usa uma linha de expansor — aqui, nada). O amp existe
+ * enquanto o rail existir.
+ *
+ * Os LDOs são consecutivos nos dois registradores, o que confere com o ALDO3
+ * acima: ALDO1 no bit 0 / 0x92, ALDO2 no bit 1 / 0x93, ALDO3 no bit 2 / 0x94. */
+#define AXP_ALDO2_VOL_CTRL  0x93
+#define AXP_ALDO2_BIT       1
+#define AXP_ALDO2_3V3       0x1C
+
 static i2c_master_bus_handle_t s_i2c;
 static i2c_master_dev_handle_t s_axp;
 static esp_lcd_panel_handle_t s_panel;
@@ -107,6 +118,11 @@ static esp_err_t axp_write(uint8_t reg, uint8_t val)
     return i2c_master_transmit(s_axp, buf, sizeof(buf), 200);
 }
 
+static esp_err_t axp_read(uint8_t reg, uint8_t *val)
+{
+    return i2c_master_transmit_receive(s_axp, &reg, 1, val, 1, 200);
+}
+
 static esp_err_t axp_bit(uint8_t reg, uint8_t bit, bool on)
 {
     uint8_t v = 0;
@@ -134,6 +150,24 @@ static esp_err_t painel_energizar(void)
     vTaskDelay(pdMS_TO_TICKS(100));
 
     ESP_LOGI(TAG, "ALDO3 (rail do AMOLED) ligado");
+    return ESP_OK;
+}
+
+esp_err_t bsp_amp_power(bool on)
+{
+    ESP_RETURN_ON_ERROR(axp_open(), TAG, "AXP2101 não abriu");
+    if (!on) return axp_bit(AXP_LDO_ONOFF_CTRL0, AXP_ALDO2_BIT, false);
+
+    /* Os três bits altos do 0x93 não são deste LDO. Escrever o byte inteiro
+     * aqui mexeria em coisa alheia — daí o read-modify-write, que é também o
+     * que a XPowersLib faz. */
+    uint8_t v = 0;
+    ESP_RETURN_ON_ERROR(axp_read(AXP_ALDO2_VOL_CTRL, &v), TAG, "ALDO2 vol rd");
+    v = (uint8_t) ((v & 0xE0) | AXP_ALDO2_3V3);
+    ESP_RETURN_ON_ERROR(axp_write(AXP_ALDO2_VOL_CTRL, v), TAG, "ALDO2 vol wr");
+    ESP_RETURN_ON_ERROR(axp_bit(AXP_LDO_ONOFF_CTRL0, AXP_ALDO2_BIT, true), TAG, "ALDO2 on");
+
+    ESP_LOGI(TAG, "ALDO2 (rail do amplificador) ligado");
     return ESP_OK;
 }
 
