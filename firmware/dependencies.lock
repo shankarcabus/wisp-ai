@@ -23,6 +23,16 @@ dependencies:
       registry_url: https://components.espressif.com
       type: service
     version: 0.5.3
+  espressif/esp_codec_dev:
+    component_hash: 4779f31a3ba3f9b38aee1afe6ccb9ba8f6108dc3a6e77d39d7d714e9a215371b
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.6.2
   espressif/esp_lcd_co5300:
     component_hash: 21f84c5c825509ebacbddb379555b49092ae165b3e19f0edfbf6f8eff8aa036d
     dependencies:
@@ -142,7 +152,7 @@ dependencies:
       type: service
     version: 0.6.3
   espressif/esp_mmap_assets:
-    component_hash: b7c559238d9f4c11048b1d7302f5474e4f4f590902433efd792bd0cbf5324f2a
+    component_hash: 42310c362596de2a37248c2937b1754bc29cd0356b9839e2a77cf791e6bcdde1
     dependencies:
     - name: espressif/cmake_utilities
       registry_url: https://components.espressif.com
@@ -154,7 +164,7 @@ dependencies:
     source:
       registry_url: https://components.espressif.com/
       type: service
-    version: 2.0.0
+    version: 2.0.1
   espressif/esp_new_jpeg:
     component_hash: e1e7e6991193c41ed6c9fc386702aa7821433319e7aa9c3147cd3236310cd69c
     dependencies: []
@@ -268,6 +278,7 @@ dependencies:
       type: service
     version: 2.0.0
 direct_dependencies:
+- espressif/esp_codec_dev
 - espressif/esp_lcd_co5300
 - espressif/esp_lcd_touch
 - espressif/esp_lv_decoder
@@ -278,6 +289,6 @@ direct_dependencies:
 - lvgl/lvgl
 - waveshare/esp_lcd_touch_cst9217
 - waveshare/qmi8658
-manifest_hash: 762daecc1d1cf6e4b9174610aee5e5ef57d80436f2068613314fc5f0bdd033ab
+manifest_hash: ce0e16a12e27cef977bb65893abd76daaac99dc6aed348caeb825fe4117d4fd6
 target: esp32c6
 version: 2.0.0

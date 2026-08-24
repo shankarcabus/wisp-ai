@@ -34,6 +34,7 @@
 #include "qmi8658.h"
 #include "board.h"
 #include "pmic.h"
+#include "som.h"
 #include "ui.h"
 
 static const char *TAG = "wisp";
@@ -1147,6 +1148,13 @@ void app_main(void)
      * acontece igual no firmware sem PMIC nenhum (medido, 6/8 contra 4/8 em
      * 8 boots cada — indistinguivel). Nao havia o que otimizar aqui. */
     s_pmic_ok = pmic_start(bsp_i2c_get_handle());
+
+    /* O som junto do pmic, no boot, e NAO na task de rede — pelo mesmo motivo
+     * medido acima: abrir dispositivo I2C com o barramento em uso pelo touch,
+     * de dentro daquela task, nao volta. Falhar aqui e mudo, nao fatal: uma
+     * placa sem som ainda mostra o mascote. */
+    if (som_init(bsp_i2c_get_handle()) != ESP_OK)
+        ESP_LOGW(TAG, "sem som: o codec nao subiu");
 
     xTaskCreate(tarefa_botoes, "botoes", 2560, NULL, 3, NULL);
     if (s_imu_ok) {
