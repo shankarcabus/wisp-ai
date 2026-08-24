@@ -985,6 +985,58 @@ static void aplicar_personagem(const char *nome)
     }
 }
 
+/* Toca ao ENTRAR no estado dominante, e só.
+ *
+ * Um `waiting` de dez minutos toca UMA vez, não seiscentas: o /state é
+ * consultado a cada 600ms e o que interessa é a transição, não o estado. Mesma
+ * regra do Som.aoEntrar do app do Mac, e pelo mesmo motivo.
+ *
+ * A PRIMEIRA leitura nunca toca — só arma o comparador. A placa não presenciou
+ * transição nenhuma: o estado que ela encontra do outro lado já estava lá.
+ *
+ * SAIR DO OFFLINE também não toca. Isto não é detalhe: o firmware NASCE em
+ * WISP_OFFLINE e volta a esse estado sempre que o bridge não responde, então a
+ * volta é sempre OFFLINE -> algum estado real. Sem esta regra, ligar a placa com
+ * um `asking` ativo tocaria o alarme de um pedido que ninguém acabou de fazer —
+ * exatamente o alarme falso que a regra da primeira leitura existe para evitar,
+ * entrando por outra porta. ENTRAR no offline toca, se estiver marcado: "perdi o
+ * bridge" é um aviso que vale ter.
+ *
+ * Chamada de todos os caminhos que atualizam a tela, e é por isso que ela mora
+ * aqui e não no ui.c: aquele arquivo é compilado pelo simulador, que não tem
+ * áudio para linkar. */
+static void som_no_estado(const wisp_data_t *d)
+{
+    static wisp_state_t ult = WISP_COUNT;   /* WISP_COUNT = ainda não vi nada */
+
+    const int i = ui_sessao_dominante(d);
+    const wisp_state_t dom = (i < 0) ? WISP_IDLE : d->sessions[i].state;
+    if (dom == ult) return;
+
+    const bool primeira = (ult == WISP_COUNT);
+    const bool voltando  = (ult == WISP_OFFLINE);
+    ult = dom;
+
+    if (primeira || voltando) {
+        /* Uma linha por vez que o comparador arma sem tocar. Existe porque
+         * "não tocou" tem duas causas — a regra funcionou, ou nada chegou — e
+         * sem isto elas são indistinguíveis no log. */
+        ESP_LOGI(TAG, "som: armado em %s (%s)", ui_state_name(dom),
+                 primeira ? "primeira leitura" : "voltando do offline");
+        return;
+    }
+    if (!s_cfg.som) return;
+    if (!(s_cfg.som_estados & (uint8_t) (1u << dom))) {
+        ESP_LOGI(TAG, "som: %s nao esta na lista", ui_state_name(dom));
+        return;
+    }
+
+    ESP_LOGI(TAG, "som: %s", ui_state_name(dom));
+    som_volume(s_cfg.som_volume);
+    som_tocar(dom);
+}
+
+
 static void tarefa_rede(void *arg)
 {
     char *buf = heap_caps_malloc(RESP_MAX, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
@@ -1005,6 +1057,7 @@ static void tarefa_rede(void *arg)
             snprintf(nd.sessions[0].detail, sizeof(nd.sessions[0].detail),
                      "bridge not found");
             ui_update(&nd);
+            som_no_estado(&nd);
             vTaskDelay(pdMS_TO_TICKS(5000));
             continue;
         }
@@ -1068,6 +1121,7 @@ static void tarefa_rede(void *arg)
                 s_dados.battery_pct = s_bat_pct;
                 s_dados.battery_charging = s_bat_carregando;
                 ui_update(&s_dados);
+                som_no_estado(&s_dados);
             }
         } else if (++falhas == 5) {
             /* Cinco erros seguidos: o bridge caiu ou o IP mudou.
@@ -1079,6 +1133,7 @@ static void tarefa_rede(void *arg)
             snprintf(off.sessions[0].detail, sizeof(off.sessions[0].detail),
                      "bridge offline");
             ui_update(&off);
+            som_no_estado(&off);
         }
 
         /* A RAM interna é o recurso disputado entre a pilha WiFi e o buffer
