@@ -1,16 +1,24 @@
 import AppKit
 
-/// O som que avisa que o Claude precisa de você.
+/// O som que avisa que o Claude precisa de você, no Mac.
 ///
-/// SÓ NO MAC, E POR UM MOTIVO DE HARDWARE
-/// --------------------------------------
-/// A placa C6 não tem áudio utilizável: nenhum `BOARD_HAS_SOUND`, nenhum pino
-/// I2S mapeado em nenhum dos dois projetos desta bancada, e o amplificador atrás
-/// de um TCA9554 que ninguém dirige. A placa irmã S3 tem um ES8311 com os pinos
-/// documentados, e é dela que o projeto vizinho toca som. Aqui, o Mac.
+/// A PLACA TAMBÉM TOCA, E TEM A LISTA DELA
+/// ---------------------------------------
+/// Este arquivo já explicou que a placa C6 não tinha áudio utilizável — sem
+/// `BOARD_HAS_SOUND`, sem pinos I2S mapeados, com o amplificador atrás de um
+/// TCA9554 que ninguém dirige. Era verdade de OUTRA placa: o expansor é a
+/// AMOLED 1.8" C6. Nesta, uma varredura do barramento não acha expansor nenhum e
+/// acha o ES8311 em 0x18, e a página do produto anuncia "Audio Playback". A placa
+/// toca desde 24/08/2026, pelo I2S em 19/20/22/23, com o amplificador alimentado
+/// pelo rail ALDO2 do PMIC.
 ///
-/// E é o lugar certo de todo jeito: quando o Claude para e espera por você, é na
-/// frente do Mac que você está.
+/// Quem decide o som DA PLACA é o firmware, pela lista em `board.sound` que o
+/// painel publica — este arquivo cuida apenas do Mac. As duas listas são
+/// independentes de propósito: o caso que isso serve é o Mac calado com a placa
+/// avisando, e é por isso que a placa nasce muda.
+///
+/// E o Mac continua sendo um lugar certo: quando o Claude para e espera por você,
+/// é na frente do Mac que você está — só não é mais o único que pode falar.
 ///
 /// SONS DO SISTEMA, NADA EMBUTIDO
 /// ------------------------------
@@ -23,6 +31,11 @@ enum Som {
     /// escolher oito sons num painel é trabalho para quem usa e a expressividade
     /// se ganha aqui de graça: alto e curto para quem chama, grave para quem
     /// falhou, cristalino para quem terminou.
+    ///
+    /// A placa usa este mesmo mapa, com estes mesmos três sons convertidos para
+    /// PCM (firmware/tools/sons_para_c.py). Mudar um aqui é mudar em dois
+    /// lugares — e é de propósito que sejam os mesmos: o aviso não deve depender
+    /// de qual dos dois você ouviu.
     static func nome(_ s: MascotState) -> String {
         switch s {
         case .done:  return "Glass"

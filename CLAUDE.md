@@ -65,6 +65,10 @@ this table is that none of these announce themselves.
 | A button does nothing | on the C6 the KEY is **GPIO10**, not GPIO18 — every source including Waveshare's example config says 18, and there is no button there. The middle button is the PWR: not a GPIO at all, it arrives as an interrupt bit in the AXP2101 | find pins by measuring: every free pin as input with pull-up, log which one drops. Careful — "the button does nothing" is also what a brightness request at the limit produces |
 | Board associates to WiFi then drops, stuck at "connecting" | could be the password, a missing SSID, a 5GHz-only network, or a post-association failure — all identical on screen | read the disconnect `reason` in the log: 15/204 password, 201 no AP, 205 connection fail |
 | `reason 201` and the SSID **in the log looks right**, on a network you can see from the Mac | an invisible control byte in the SSID in NVS — measured, `\x1bVida2`, an Escape keypress at the provisioning prompt. Nothing on the way there shows it: `.strip()` drops whitespace and ESC is not whitespace, the `len > 32` check passes, and `ESP_LOGI("%s")` prints the ESC as nothing, so the log reads `conectando em 'Vida2'` | read the flash back and look at the bytes: `~/.wisp/tools/bin/python3 -m esptool --port /dev/cu.usbmodem101 --chip esp32c6 read_flash 0x9000 0x6000 nvs.bin`, then find the `ssid` key in the `wisp` namespace. `provision_wifi.py` now strips these on the way in, so this should not recur — the row stays because reading NVS back is the only way to SEE it |
+| Board is silent, `som: ES8311 pronto` in the log | the codec came up but the amp rail did not: on this board there is **no PA enable GPIO** (the S3 2.16 uses pin 46, the 1.8 an expander line) — the NS4150B lives on the AXP2101's **ALDO2** | `bsp_amp_power(true)`, which `som_init()` calls first. Bit 1 of `0x90`, voltage in `0x93` |
+| Codec never ACKs, `esp_codec_dev_open` fails | `ES8311_CODEC_DEFAULT_ADDR` is **0x30**, the 8-bit form of our 0x18 — the component speaks shifted addresses | use the constant, never a literal `0x18` |
+| Sound plays too fast or too slow | the PCM in `sons.c` and `TAXA` in `som.c` disagree | both are 22050; regenerate with `tools/sons_para_c.py` |
+| Board plays an alert right after boot | should be impossible — the first reading only arms the comparator, and leaving offline never plays | check the log for `som: armado em <estado>`; if a real alert fires instead, the static in `som_no_estado()` is being reset |
 | Limits on screen say **limits unavailable** | Claude Code's cache in `~/.claude.json` (`cachedUsageUtilization`) only moves when something makes it fetch — measured, 24 days without moving — and the bridge now refuses a payload whose windows have all reset instead of showing numbers from a week that closed | check **"Fetch real limits"** is ticked in the Wisp.app panel: the app is the only thing here that can fetch live, with keychain access. Running `/usage` in Claude Code also unsticks the on-disk cache |
 | Board hangs, watchdog in series, `swdraw` never yields, no FPS line at all | a style transform on a CONTAINER — `transform_scale` or `transform_rotation` on an object with children. LVGL renders the whole subtree into a layer and transforms it in software: 306×306 is 93,636 px, and at the ~0.76 µs/px this silicon does that is ~71 ms per frame | transform nothing that has children. Animate by moving SMALL objects, which is what the Terminal does with its orbiting light and its eyes; the body never moves |
 | Limits on screen are *days* old | a bridge from before `9c6d401`: it gave the live reading a 10-minute deadline and then fell back to the cache no matter how old it was, while the app only refetches hourly when idle | update the bridge — it picks by age now, so the freshest source wins and the age on screen is the real one |
@@ -88,14 +92,6 @@ this table is that none of these announce themselves.
   binary starts with the `MMAP` magic the component uses the checksum from the
   header and ignores the config. A constant there validates nothing and goes
   stale the moment the art changes — it reads like verification and isn't.
-- **There is no sound on the C6, and that is the board.** Not an omission in this
-  firmware: the C6 declares no `BOARD_HAS_SOUND`, no I2S pins are mapped in
-  either project on this bench, and its power amp sits behind a TCA9554 that
-  nothing drives — the sibling project's own C6 sound file is three empty
-  functions with the comment "no buzzer wired". The S3 is the one with the
-  ES8311, at 0x18, with MCLK 42 / BCLK 9 / WS 45 / DOUT 8 / DIN 10 and the amp on
-  GPIO 46. Sound lives on the Mac (`mac/Sources/Som.swift`); putting it on this
-  board starts with finding its pins, which is measurement, not porting.
 - **The label shows the state, not the tool, when the language is Portuguese.**
   Deliberate. The detail field comes from the bridge and is not translatable —
   tool names like `Bash` and English phrases like `approve plan`. A label reading
@@ -119,6 +115,8 @@ this table is that none of these announce themselves.
 | `firmware/props/` + `firmware/tools/props_to_c.py` | Bytelo's adornments, as ASCII maps converted at build time. The `.c` is generated |
 | `sim/` | the board's screen, running the real `ui.c` on the Mac. Proves layout, proves nothing about cost |
 | `mac/Sources/Placa.swift` | the board's two screens **redrawn** in SwiftUI, for the panel's first tab. Every size and position in it is written in the board's own 480px and converted by one scale factor, so each constant can be looked up in `ui.c` and checked. Change a colour or a threshold there and this file is the second place it has to change — and the three deliberate divergences are marked one by one, with the reason |
+| `firmware/main/som.c` | the board's audio: ES8311 through `esp_codec_dev`, I2S mono on 19/20/22/23, and the three volume steps the panel publishes. The trigger is **not** here — it is `som_no_estado()` in `main.c`, because `ui.c` is compiled by the simulator too |
+| `firmware/main/sons.c` + `firmware/tools/sons_para_c.py` | the macOS system sounds as embedded PCM, mono 22 kHz. The `.c` is generated — do not hand-edit |
 | `~/.wisp/ui.json` + `bridge/config.py` | everything the panel publishes — character, labels, language, sizes — and the only channel there is from the app to the bridge. The one-line `~/.wisp/mascot` is still read, as migration |
 | `firmware/sdkconfig.defaults` + `.esp32s3` / `.esp32c6` | shared config plus per-chip; the split is required because `CONFIG_SPIRAM` and `ESP32S3_*_CACHE` do not exist in the C6's Kconfig |
 | `firmware/README.md` | the hardware detail behind all of the above |
@@ -143,6 +141,13 @@ labels, language and size each reach the board and change the screen without
 reflashing, one `ajustes:` line in the log per change. That measurement is what caught the container-transform
 hang in the table above, which compiling could never have shown: the firmware
 built clean and then never drew a frame.
+
+Sound on the C6 is verified on hardware on 24 Aug 2026, by ear and by log: the
+codec reports MONO at 22050 Hz and opens, the clip plays through the speaker, the
+first reading after boot arms the comparator without playing (log line
+`som: armado em tool (primeira leitura)`, with `tool` enabled at the time), and a
+real transition into `asking` plays once and stays quiet while the state lasts.
+Cost measured the same day: internal RAM free went from 82248 to 73500 bytes.
 
 There is also a simulator, `sim/`, which runs the real `ui.c` on the Mac. It is
 good for layout, expression and composition, and it proves nothing about cost —
