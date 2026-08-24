@@ -37,9 +37,31 @@ struct Limit: Decodable, Identifiable {
     /// The window already rolled over, so `p` describes a period that no
     /// longer exists. Optional so an older bridge still decodes.
     let x: Bool?
+    /// Average-pace mark, 0-100: where the fill would be if the window had
+    /// been spent at a constant rate. -1 means "draw none" — the same
+    /// unknown-sentinel `limits_age_s` uses, so a missing key and an
+    /// unknowable value land on one code path.
+    ///
+    /// It has always been in the payload; only the board drew it. The panel
+    /// now shows the board's own screen, so it needs the same field.
+    let e: Int?
 
     var id: String { l }
     var expired: Bool { x == true }
+}
+
+/// The weather, as the bridge already sends it.
+///
+/// `/app` has carried `"weather": snap.get("wx")` since the endpoint existed —
+/// nothing had ever decoded it, because the panel had no screen that wanted it.
+/// The keys are short for the same reason the session's are: the board parses
+/// this JSON with little RAM, and there is one format, not one per consumer.
+struct Weather: Decodable {
+    let t: Int          // temperature now
+    let c: String       // condition, short ("partly cloudy")
+    let i: String       // icon the firmware knows how to draw
+    let hi: Int         // today's high
+    let lo: Int         // today's low
 }
 
 /// Usage in one window (5h or 7 days), computed from the local transcripts.
@@ -92,6 +114,34 @@ struct AppState: Decodable {
     /// for boards flashed before the token; it goes away once reflashed.
     let open_network: Bool?
     let windows: Windows?
+    /// Optional, and it has to be: the bridge omits the key entirely when it
+    /// has no coordinates configured or the fetch has been failing. Rest mode
+    /// then shows the clock with no temperature, which is degradation, not an
+    /// error — the same thing the board does.
+    let weather: Weather?
+    /// Silence since the last event of any session, and the deadline after
+    /// which it counts as rest. Optional so an older bridge still decodes —
+    /// without them the panel simply never shows the clock, which is the
+    /// behaviour it had before rest mode existed.
+    let idle_age_s: Int?
+    let rest_s: Int?
+
+    /// Whether the board is showing the clock instead of the mascot.
+    ///
+    /// The rule is the firmware's, from `ui.c`: no sessions AND idle long
+    /// enough, where "long enough" includes the -1 case — no session known
+    /// since the bridge came up, so there is no work to wait for.
+    ///
+    /// `sessions.isEmpty` is NOT enough on its own, and that is the whole
+    /// reason `idle_age_s` had to be added to the payload: the bridge drops a
+    /// session from the list after 30 seconds of silence, so between that and
+    /// the 5-minute deadline the board shows the generic idle mascot — no
+    /// active session to name, but not yet time to give up on it.
+    var resting: Bool {
+        guard sessions.isEmpty, let rest = rest_s, rest > 0 else { return false }
+        guard let idade = idle_age_s else { return false }
+        return idade < 0 || idade >= rest
+    }
 
     /// The state the large mascot shows: the most urgent among the sessions.
     ///

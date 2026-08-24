@@ -76,11 +76,66 @@ enum Limits {
                 return m
             }
         }
+
+        /// Whether a request was actually made.
+        ///
+        /// It separates failures that cost something to retry from ones that
+        /// cost nothing: everything before the request is a local read, and
+        /// hammering a local read cannot provoke a 429. The retry policy in
+        /// Bridge leans on this.
+        var reachedNetwork: Bool {
+            switch self {
+            case .http, .network:
+                return true
+            case .noCredential, .noToken, .keychainStuck, .expired:
+                return false
+            }
+        }
     }
 
     // MARK: - keychain
 
-    private nonisolated static func token() throws -> String {
+    /// Reads the credential through `/usr/bin/security`, or nil if that path
+    /// does not answer.
+    ///
+    /// Tried FIRST, and not as a matter of taste. The "Always Allow" that lets
+    /// this app read the item is an ACL entry ON THE ITEM, and a `/login`
+    /// rewrites the item with a fresh ACL. Measured on 23/08/2026, minutes
+    /// after a login: the entry list held `/usr/bin/security` and nothing
+    /// else. From that moment every SecItemCopyMatching raised a dialog, the
+    /// deadline in fetch() expired with nobody at the machine to answer it,
+    /// and the screen went on showing the previous day's number — 1495 minutes
+    /// old, with no visible reason. Every login used to break this feature.
+    ///
+    /// This binary is the exception precisely because it is not a grant anyone
+    /// clicks: Claude Code STORES the credential through it, so the entry
+    /// `identifier "com.apple.security" and anchor apple` is recreated by the
+    /// very act of logging in. It is the one read path a login cannot revoke,
+    /// and it does not prompt — measured at 10ms, three times out of three.
+    private nonisolated static func credentialViaCLI() -> [String: Any]? {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        p.arguments = ["find-generic-password", "-s", service, "-w"]
+        let out = Pipe()
+        p.standardOutput = out
+        // "item not found" and friends go here. Not our channel: a menu bar app
+        // has no terminal, and inheriting one only pollutes whoever launched us.
+        p.standardError = FileHandle.nullDevice
+        do { try p.run() } catch { return nil }
+        // Drain BEFORE waiting. The payload fits the pipe buffer today, but
+        // waitUntilExit() on a pipe nobody reads is a deadlock waiting for the
+        // credential to grow.
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        guard p.terminationStatus == 0 else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    /// The framework path, kept as a fallback.
+    ///
+    /// The CLI's output is not a contract. If a macOS release changes it, a
+    /// prompt is still better than losing the reading altogether.
+    private nonisolated static func credentialViaFramework() throws -> [String: Any] {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -95,6 +150,11 @@ enum Limits {
         guard let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw Failure.noToken
         }
+        return raw
+    }
+
+    private nonisolated static func token() throws -> String {
+        let raw = try credentialViaCLI() ?? credentialViaFramework()
 
         // The Claude entry EXPLICITLY, not "the first accessToken anywhere".
         //

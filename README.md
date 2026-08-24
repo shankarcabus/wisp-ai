@@ -23,9 +23,13 @@ without leaving what you were doing.
   <img src="docs/states.png" width="820" alt="The eight states in a row: idle, thinking, working, asked you, needs you, finished, failed, no connection">
 </p>
 
-| the menu bar panel | on your desktop |
-|---|---|
-| <img src="docs/panel.png" width="270" alt="The panel: usage over the 5h and 7 day windows, subscription limits, today's totals, three active sessions and the board's address"> | <img src="docs/floating.png" width="180" alt="The mascot on the desktop, asking a question, with a bubble reading Auth method"> |
+The panel opens on the board's own two screens, redrawn on the Mac from the
+firmware's own measurements — the same composition, the same colours, the same
+thresholds. One visual vocabulary for the same information, not two.
+
+| the board, on the Mac | asleep | what the Mac knows | on your desktop |
+|---|---|---|---|
+| <img src="docs/panel.png" width="220" alt="The Board tab: the mascot on black asking a question, the running projects listed under it, and below that the usage limits panel with three cards"> | <img src="docs/panel-rest.png" width="220" alt="The same tab with nothing running: the clock, the date, a sun-behind-cloud icon and the temperature, the way the board goes to rest"> | <img src="docs/panel-usage.png" width="220" alt="The Usage tab: the 5h and 7 day windows against your own peak, today's totals, three active sessions and the board's address"> | <img src="docs/floating.png" width="140" alt="The mascot on the desktop, asking a question, with a bubble reading Auth method"> |
 
 ## Install
 

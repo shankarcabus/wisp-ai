@@ -597,6 +597,23 @@ class Handler(BaseHTTPRequestHandler):
                 "board_bat_chg": board_bat_chg,
                 "tasks_done": tasks_done,
                 "sessions": snap["s"],
+                # Silence since the last event of ANY session, and the deadline
+                # after which it means rest. The board has had both since it
+                # existed; the app needs them now that its panel draws the
+                # board's screen.
+                #
+                # They cannot be derived from `sessions`: that list drops a
+                # session after SESSION_ACTIVE_S (30s), so "the list is empty"
+                # is a 30-second threshold, not a 5-minute one. The firmware
+                # made exactly that mistake once — its comment above
+                # `ocioso_bastante` in ui.c records it — and the whole point of
+                # sending `rest` rather than compiling it in is that the
+                # deadline can move without reflashing anything.
+                #
+                # -1 = no session known since the bridge came up. It is not
+                # "idle for zero seconds"; it is "there is nothing to wait for".
+                "idle_age_s": snap["age"],
+                "rest_s": snap["rest"],
                 "limits": snap["lim"],
                 "limits_age_s": snap["lim_age"],
                 "limits_source": snap.get("lim_src", ""),

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import csv as _csv
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -39,6 +40,65 @@ NAMESPACE = "wisp"
 DEFAULT_HOST = "wisp.local"
 
 
+def _limpar(texto: str, rotulo: str, mostrar: bool = True) -> str:
+    """
+    Drops control characters, and says so.
+
+    WHY THIS EXISTS, measured on 23/08/2026: the SSID reached the NVS as
+    `\\x1bVida2` — a bare ESC in front of the name. The board then hunted for a
+    network nobody broadcasts and reported `reason 201` (NO_AP_FOUND) forever,
+    which the project's own trap table lists as ambiguous between a wrong SSID,
+    a missing SSID and a 5GHz-only network. Diagnosing it took reading the flash
+    back, because nothing on the way there could show it: `.strip()` only
+    removes WHITESPACE and ESC is not whitespace, `len(ssid) > 32` passes, and
+    the firmware's own `ESP_LOGI("%s")` printed `conectando em 'Vida2'` — the
+    ESC is invisible, so the log looked correct.
+
+    Where the byte comes from: the `/dev/tty` branch below does a raw
+    `readline()` with no line editing, so Escape and the arrow keys arrive as
+    the literal escape bytes they send instead of being handled. `input()` gets
+    readline and does not have the problem, which is why this only bites when
+    stdin is piped — an editor task runner, an agent shell.
+
+    Stripping rather than re-asking: a control character in an SSID, a hostname
+    or a character name is never what anybody meant, so the intent is
+    unambiguous. Re-asking would also need a retry loop in a function that has
+    a non-interactive path, and that is a new way to hang.
+
+    THE ESCAPE SEQUENCE GOES WHOLE, and dropping only the ESC byte is a trap of
+    its own: an arrow key sends `ESC [ A`, so removing the ESC alone leaves
+    `[AVida2`. That still does not connect, and it is WORSE than the invisible
+    version — it now reads like a plain typo, which sends whoever is debugging
+    it looking in the wrong place.
+
+    BUT ONLY THE UNAMBIGUOUS FORMS, and this is the second trap, hit while
+    fixing the first. The generic two-character escape is `ESC` plus one byte in
+    `@-Z \\ ]-_`, and `V` is 0x56 — inside that range. Matching it turned the
+    real case, `\\x1bVida2`, into `ida2`: the rule ate the name's first letter.
+    A lone ESC followed by a capital cannot be told apart from a two-character
+    sequence, so the tie is broken in favour of never consuming a PRINTABLE
+    character — silently corrupting a name someone typed correctly is the very
+    failure class this function exists to remove. Only CSI (`ESC [ … final`) and
+    the SS3 arrows some terminals send in application mode are taken as units;
+    every other stray control byte is dropped on its own, alone.
+    """
+    limpo = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]"   # CSI: setas, home, end…
+                   r"|\x1bO[A-D]",              # SS3: setas em modo aplicacao
+                   "", texto)
+    limpo = "".join(c for c in limpo if c.isprintable())
+    if limpo != texto:
+        # O ORIGINAL e o LIMPO, e nao a lista do que saiu: um caractere pode ser
+        # lixo numa posicao e legitimo noutra ("[" em "[AVida2"), e uma lista
+        # feita por pertinencia diria a coisa errada sobre qual foi qual.
+        cru = "".join(f"\\x{ord(c):02x}" if not c.isprintable() else c
+                      for c in texto)
+        visto = f": '{cru}' -> {limpo!r}" if mostrar else ""
+        print(f"   cleaned {len(texto) - len(limpo)} character(s) out of "
+              f"the {rotulo}{visto}")
+        print("   (Escape or an arrow key at the prompt is what puts them there)")
+    return limpo
+
+
 def _prompt(question: str) -> str:
     """
     Reads one answer, from the terminal even when stdin is not one.
@@ -51,8 +111,9 @@ def _prompt(question: str) -> str:
     When there is no terminal at all (CI, cron) there is nothing to ask, and
     saying so beats an EOFError traceback.
     """
+    rotulo = question.rstrip(": ").strip() or "answer"
     if sys.stdin.isatty():
-        return input(question).strip()
+        return _limpar(input(question).strip(), rotulo)
     try:
         with open("/dev/tty", "r+") as tty:
             tty.write(question)
@@ -63,7 +124,7 @@ def _prompt(question: str) -> str:
                  "or set the WiFi with ./flash.sh instead.")
     if not answer:
         sys.exit("no answer (end of input).")
-    return answer.strip()
+    return _limpar(answer.strip(), rotulo)
 
 
 def ask(port: str) -> dict:
@@ -81,8 +142,10 @@ def ask(port: str) -> dict:
     # descobrir que era isso — o reason 15 do driver e um dos poucos sinais, e
     # ele nao chega a quem esta olhando a telinha.
     for tentativa in range(3):
-        password = getpass("password (not shown): ")
-        if password == getpass("password again: "):
+        password = _limpar(getpass("password (not shown): "),
+                           "password", mostrar=False)
+        if password == _limpar(getpass("password again: "),
+                               "password", mostrar=False):
             break
         print("  the two do not match; try again.")
     else:

@@ -99,6 +99,17 @@ final class Bridge: ObservableObject {
     private static let initialBackoff: TimeInterval = 900  // 15 min
     private static let maxBackoff: TimeInterval = 4 * 3600
 
+    // A failure that never reached the network has no business waiting out the
+    // floor. Right after a `/login` the credential is good again, and the gap
+    // between retrying in 30s and retrying on the ceiling is the difference
+    // between the screen being right now and being right in an hour.
+    //
+    // Gated on the attempt being CHEAP, not merely local: a keychain dialog
+    // nobody answers burns the full 25s deadline, and retrying THAT every 30s
+    // is a dialog every 30 seconds. Cheap = it asked neither the network nor you.
+    private static let cheapRetry: TimeInterval = 30
+    private static let cheapAttempt: TimeInterval = 2
+
     private var proc: Process?
     private var stopRequested = false
     private var timer: Timer?
@@ -114,6 +125,8 @@ final class Bridge: ObservableObject {
     /// gets a SECOND request on top ten minutes later — and each one is another
     /// dialog. One question at a time.
     private var fetching = false
+    /// Last attempt failed locally AND fast — see `cheapRetry`.
+    private var lastFailureWasCheap = false
     /// Backoff survives a relaunch, on purpose.
     ///
     /// It used to live only in memory, and that defeated it: every launch
@@ -263,15 +276,19 @@ final class Bridge: ObservableObject {
     /// every 5 minutes would be harassment, and "no" is an answer.
     private func updateLimits() async {
         guard fetchLimits, state.alive else { return }
+        let began = Date()
         do {
             let u = try await Limits.fetch()
             await Limits.deliver(u, port: Self.port)
             limitsError = nil
             backoff = 0
             blockedUntil = nil
+            lastFailureWasCheap = false
         } catch let f as Limits.Failure {
             limitsError = f.description
             await Limits.reportFailure(f.description, port: Self.port)
+            lastFailureWasCheap = !f.reachedNetwork
+                && Date().timeIntervalSince(began) < Self.cheapAttempt
             if case .noCredential(let s) = f, s == errSecUserCanceled {
                 fetchLimits = false
             }
@@ -281,6 +298,7 @@ final class Bridge: ObservableObject {
             }
         } catch {
             limitsError = error.localizedDescription
+            lastFailureWasCheap = false
         }
     }
 
@@ -312,6 +330,13 @@ final class Bridge: ObservableObject {
         // The floor comes first and applies to every trigger: it is the only
         // thing standing between a fast iteration and a self-inflicted 429.
         let since = now.timeIntervalSince(last)
+        // The cheap lane comes before the floor, on purpose: the floor is there
+        // to protect the SERVER from a fast iteration, and an attempt that never
+        // left this machine has nothing to protect it from.
+        if lastFailureWasCheap {
+            if since >= Self.cheapRetry { await fetchNow() }
+            return
+        }
         guard since >= Self.limitsFloor else { return }
         if since >= Self.limitsCeiling || donePending || expired {
             await fetchNow()
