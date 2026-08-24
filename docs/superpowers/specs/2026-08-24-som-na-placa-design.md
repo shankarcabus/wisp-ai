@@ -96,8 +96,12 @@ Os nomes de estado são os que o painel do Mac já usa: `idle`, `working`, `tool
 
 O estado que interessa é o **dominante**, que o `ui.c` já elege por `URGENCIA[]`
 (asking > waiting > error > tool > working > done) para decidir que cara o
-mascote faz. O som se pendura nessa mesma escolha: quando o dominante muda para
-um estado que está na lista, toca uma vez.
+mascote faz. O som usa a mesma escolha, mas **a chamada não mora no `ui.c`**: o
+simulador compila esse arquivo tal como está (`sim/CMakeLists.txt` diz "sem
+modificação de simulador") e não tem áudio para linkar. Então o `ui.c` só passa a
+expor quem é o dominante — `ui_sessao_dominante()`, que ele próprio usa no lugar
+do laço que tinha inline — e quem compara com o anterior e toca é o `main.c`, que
+é só do firmware.
 
 Duas regras que a placa exige e o Mac não:
 
@@ -137,12 +141,15 @@ antes de qualquer coisa, e foi por isso que o amplificador já estava energizado
 lá. O BSP caseiro do Wisp (`components/bsp_c6_amoled_216/bsp_c6.c`) liga **só o
 ALDO3**, o do display.
 
-Então ligar o ALDO2 é código novo no Wisp. O `pmic.c` já expõe
-`pmic_write_reg()`/`pmic_read_reg()`, e o `bsp_c6.c` já documenta que `0x90` é o
-controle liga/desliga dos LDOs (bit 2 = ALDO3) e `0x94` a tensão do ALDO3. Por
-posição, ALDO2 seria o bit 1 de `0x90` com tensão em `0x93` — **inferência, não
-medição**. A implementação começa por confirmar isso na placa, comparando com o
-que a XPowersLib escreve, antes de qualquer código de áudio.
+Então ligar o ALDO2 é código novo no Wisp — mas não é código adivinhado. A
+XPowersLib, que é o que o Clawdmeter usa para fazer isso funcionar, diz:
+**ALDO2 liga no bit 1 do `0x90`** (`LDO_ONOFF_CTRL0`) e **sua tensão vive no
+`0x93`** (`LDO_VOL1_CTRL`), como `(mV - 500) / 100` nos cinco bits baixos,
+preservando os três de cima. Confere com o `bsp_c6.c`, onde o ALDO3 é o bit 2
+com tensão no `0x94` — os LDOs são consecutivos nos dois registradores.
+
+Fica valendo a leitura de volta como verificação (ler `0x90` e `0x93` depois de
+escrever), mas o número não é mais uma aposta.
 
 ### O painel
 
