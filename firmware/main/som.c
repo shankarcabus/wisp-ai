@@ -23,10 +23,14 @@ static const char *TAG = "som";
 #define PIN_WS      22
 #define PIN_DOUT    23
 
-/* Os três degraus na escala 0-100 do esp_codec_dev. O 65 é o valor com que o
- * som foi ouvido nesta placa pela primeira vez; os outros dois são um passo
- * para cada lado, e são estes três números que se mexe se a mesa pedir. */
-static const int VOLUMES[WISP_VOL_QTD] = {40, 65, 85};
+/* Os três degraus na escala 0-100 do esp_codec_dev.
+ *
+ * CALIBRADO OUVINDO, e os números não são simétricos por acidente. Começaram em
+ * 40/65/85 e a escada subia pouco: os três degraus eram audíveis, mas escolher
+ * entre eles no painel quase não mudava nada — um controle que não se percebe é
+ * um controle que não serve. Afastados para as pontas da escala. O 65 fica
+ * porque é o valor com que esta placa foi ouvida pela primeira vez. */
+static const int VOLUMES[WISP_VOL_QTD] = {30, 65, 100};
 
 static esp_codec_dev_handle_t s_dev;
 static i2s_chan_handle_t      s_tx;
