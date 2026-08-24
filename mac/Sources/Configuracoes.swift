@@ -94,6 +94,31 @@ struct AbaConfig: View {
                     }
                 }
             }
+
+            Toggle(isOn: liga({ Ajustes.boardSoundEnabled },
+                              { Ajustes.boardSoundEnabled = $0 })) {
+                Text("Sound when the state changes").font(.system(size: 11))
+            }
+            .toggleStyle(.checkbox)
+            .help("The board has its own list, independent from the Mac's: "
+                  + "the case this serves is a silent Mac with the board "
+                  + "calling you. Off by default, so updating never starts "
+                  + "playing the same alert twice.")
+
+            if Ajustes.boardSoundEnabled {
+                CaixasDeSom(estados: liga({ Ajustes.boardSoundStates },
+                                          { Ajustes.boardSoundStates = $0 }))
+                    .padding(.leading, 18)
+
+                Campo("Volume") {
+                    Picker("", selection: liga({ Ajustes.boardVolume },
+                                               { Ajustes.boardVolume = $0 })) {
+                        ForEach(Ajustes.Volume.allCases, id: \.self) {
+                            Text($0.rotulo).tag($0)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -119,8 +144,8 @@ struct AbaConfig: View {
                 Text("Sound when the state changes").font(.system(size: 11))
             }
             .toggleStyle(.checkbox)
-            .help("The C6 board has no usable audio — no I2S pins mapped and "
-                  + "the amplifier behind an expander nobody drives.")
+            .help("Independent from the board's list, right above — "
+                  + "each side has its own states.")
 
             if Ajustes.soundEnabled {
                 CaixasDeSom(estados: liga({ Ajustes.soundStates },

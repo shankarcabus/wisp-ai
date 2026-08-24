@@ -134,6 +134,19 @@ MainActor.assumeIsolated {
     // The Usage tab: what the Mac knows and the board has no channel to show.
     write(aba(AbaUso(bridge: bridge)), "panel-usage", opaque: true)
 
+    // A aba de ajustes, que ninguém fotografava — e é justamente a que muda
+    // quando se acrescenta um controle. Uma tela sem foto é uma tela que se
+    // revisa de memória.
+    //
+    // Com o som da placa LIGADO, porque desligado ele esconde as caixas de
+    // estado e o volume, e uma foto que não mostra os controles não documenta
+    // os controles. Restaurado depois: este processo tem UserDefaults próprio,
+    // mas deixá-lo sujo é como se cria um padrão que ninguém escolheu.
+    let somAntes = Ajustes.boardSoundEnabled
+    Ajustes.boardSoundEnabled = true
+    write(aba(AbaConfig(bridge: bridge)), "panel-settings", opaque: true)
+    Ajustes.boardSoundEnabled = somAntes
+
     // The desktop mascot, transparent, the way it actually sits on a desktop.
     write(FloatingContent(bridge: bridge), "floating")
 
