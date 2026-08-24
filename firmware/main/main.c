@@ -851,6 +851,27 @@ static bool interpretar(const char *json, wisp_data_t *d)
             s_cfg.pt = (strcmp(v->valuestring, "pt") == 0);
         if (cJSON_IsString(v = cJSON_GetObjectItemCaseSensitive(cfg, "size")))
             s_cfg.tamanho = ui_tamanho_from_text(v->valuestring);
+
+        /* O som: mesmo contrato das quatro de cima, chave ausente mantém o que
+         * já vale. A lista vira bitmask aqui e não na hora de tocar, porque
+         * tocar acontece numa transição e comparar strings ali seria trabalho
+         * repetido a cada 600ms para responder a mesma pergunta. */
+        const cJSON *snd = cJSON_GetObjectItemCaseSensitive(cfg, "sound");
+        if (cJSON_IsObject(snd)) {
+            if (cJSON_IsBool(v = cJSON_GetObjectItemCaseSensitive(snd, "enabled")))
+                s_cfg.som = cJSON_IsTrue(v);
+            const cJSON *st = cJSON_GetObjectItemCaseSensitive(snd, "states"), *it = NULL;
+            if (cJSON_IsArray(st)) {
+                uint8_t m = 0;
+                cJSON_ArrayForEach(it, st) {
+                    const int k = cJSON_IsString(it) ? ui_state_index(it->valuestring) : -1;
+                    if (k >= 0) m |= (uint8_t) (1u << k);
+                }
+                s_cfg.som_estados = m;
+            }
+            if (cJSON_IsString(v = cJSON_GetObjectItemCaseSensitive(snd, "volume")))
+                s_cfg.som_volume = ui_volume_from_text(v->valuestring);
+        }
     }
 
     /* Uma sessao do Claude = um mascote. O bridge manda em "s", mais

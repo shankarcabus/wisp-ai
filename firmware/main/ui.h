@@ -89,6 +89,9 @@ typedef struct {
     bool    projetos;  /* mostrar a lista de projetos */
     bool    pt;        /* texto em português; false = inglês */
     uint8_t tamanho;   /* WISP_TAM_*, já validado por ui_configurar() */
+    bool    som;          /* board.sound.enabled */
+    uint8_t som_estados;  /* bitmask: bit N = tocar ao entrar no estado N */
+    uint8_t som_volume;   /* WISP_VOL_* */
 } wisp_cfg_t;
 
 /* Os degraus de tamanho. O que cada um SIGNIFICA é do personagem — a mesma
@@ -96,12 +99,19 @@ typedef struct {
 typedef enum { WISP_TAM_PEQUENO = 0, WISP_TAM_MEDIO, WISP_TAM_GRANDE,
                WISP_TAM_QTD } wisp_tam_t;
 
+/* Os degraus de volume. Três e não cem: o alto-falante desta placa não tem cem
+ * valores distinguíveis. Os números que o codec recebe vivem no som.c. */
+typedef enum { WISP_VOL_BAIXO = 0, WISP_VOL_MEDIO, WISP_VOL_ALTO,
+               WISP_VOL_QTD } wisp_vol_t;
+
 /* O padrão, num lugar só. É o comportamento de antes de os ajustes existirem,
  * então uma placa que nunca receba a chave `ui` não muda de cara. Estava escrito
  * por extenso em três arquivos, e um quinto campo era uma edição em três lugares
  * — com o simulador silenciosamente deixando de reproduzir a placa. */
 #define WISP_CFG_PADRAO { .acao = true, .projetos = true, \
-                          .pt = false, .tamanho = WISP_TAM_MEDIO }
+                          .pt = false, .tamanho = WISP_TAM_MEDIO, \
+                          .som = false, .som_estados = 0, \
+                          .som_volume = WISP_VOL_MEDIO }
 
 /* "small"/"medium"/"large" -> degrau. Desconhecido vira médio.
  *
@@ -128,6 +138,17 @@ const wisp_cfg_t *ui_ajustes(void);
 void ui_personagem(const char *nome);
 
 wisp_state_t ui_state_from_text(const char *s);
+
+/* Índice do estado pelo nome, ou -1 se não é um nome de estado.
+ *
+ * Existe porque ui_state_from_text() devolve WISP_IDLE para o que não conhece, e
+ * isso é certo para o campo "st" de uma sessão e ERRADO para uma lista de
+ * estados: "offline", ou um nome digitado errado, ligaria o `idle` sem ninguém
+ * ter pedido. Quem monta bitmask usa esta; quem lê uma sessão usa a outra. */
+int ui_state_index(const char *s);
+
+/* "low"/"medium"/"high" -> degrau. Desconhecido vira médio. */
+uint8_t ui_volume_from_text(const char *s);
 
 #ifdef __cplusplus
 }

@@ -374,16 +374,34 @@ uint8_t ui_tamanho_from_text(const char *s)
     return WISP_TAM_MEDIO;
 }
 
+int ui_state_index(const char *s)
+{
+    static const char *NOMES[WISP_COUNT] = {
+        [WISP_IDLE]    = "idle",    [WISP_WORKING] = "working",
+        [WISP_TOOL]    = "tool",    [WISP_ASKING]  = "asking",
+        [WISP_WAITING] = "waiting", [WISP_DONE]    = "done",
+        [WISP_ERROR]   = "error",   [WISP_OFFLINE] = "offline",
+    };
+    if (!s) return -1;
+    for (int i = 0; i < WISP_COUNT; i++)
+        if (NOMES[i] && !strcmp(s, NOMES[i])) return i;
+    return -1;
+}
+
+/* Desconhecido vira IDLE, que é o certo para o campo "st" de uma sessão: um
+ * estado que o bridge inventar não pode derrubar a tela. Quem precisa
+ * distinguir "não conheço" de "é idle" usa ui_state_index(). */
 wisp_state_t ui_state_from_text(const char *s)
 {
-    if (!s) return WISP_IDLE;
-    if (!strcmp(s, "working")) return WISP_WORKING;
-    if (!strcmp(s, "tool"))    return WISP_TOOL;
-    if (!strcmp(s, "asking"))  return WISP_ASKING;
-    if (!strcmp(s, "waiting")) return WISP_WAITING;
-    if (!strcmp(s, "done"))    return WISP_DONE;
-    if (!strcmp(s, "error"))   return WISP_ERROR;
-    return WISP_IDLE;
+    const int i = ui_state_index(s);
+    return i < 0 ? WISP_IDLE : (wisp_state_t) i;
+}
+
+uint8_t ui_volume_from_text(const char *s)
+{
+    if (s && !strcmp(s, "low"))  return WISP_VOL_BAIXO;
+    if (s && !strcmp(s, "high")) return WISP_VOL_ALTO;
+    return WISP_VOL_MEDIO;
 }
 
 
