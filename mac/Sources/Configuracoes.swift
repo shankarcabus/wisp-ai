@@ -15,7 +15,16 @@ import ServiceManagement
 struct AbaConfig: View {
     @ObservedObject var bridge: Bridge
 
-    @State private var openAtLogin = SMAppService.mainApp.status == .enabled
+    /// Lido em `.task`, e deliberadamente NÃO aqui.
+    ///
+    /// O inicializador de um `@State` roda em TODA construção da struct — o
+    /// SwiftUI descarta o valor depois da primeira, mas a chamada acontece de
+    /// qualquer forma. E `SMAppService.status` é um XPC SÍNCRONO para o `smd`:
+    /// medido, 58 de 60 amostras desta pilha estavam com a main thread parada
+    /// em `mach_msg2_trap`, porque `Panel.body` reconstrói esta aba a cada
+    /// reavaliação. Um valor que se lê uma vez não pode custar uma ida ao `smd`
+    /// por reavaliação do painel.
+    @State private var openAtLogin = false
     @State private var loginError: String?
 
     /// Contador de revisão: a única coisa que o SwiftUI precisa observar para
@@ -41,6 +50,13 @@ struct AbaConfig: View {
             naPlaca
             noMac
             app
+        }
+        // Fora da main thread: quem responde é o `smd`, e o painel não tem por
+        // que esperar por ele para desenhar.
+        .task {
+            openAtLogin = await Task.detached {
+                SMAppService.mainApp.status == .enabled
+            }.value
         }
     }
 
@@ -295,6 +311,12 @@ struct Galeria: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Oito `TimelineView` lado a lado, cada um pedindo um quadro por
+        // refresh, é o mais caro que este painel tem — e não paga nada: aqui a
+        // pergunta é "qual é a cara deste estado", que uma pose responde. O
+        // personagem continua respirando onde isso significa alguma coisa, no
+        // mascote grande da primeira aba e no da mesa.
+        .semAnimacao()
     }
 }
 

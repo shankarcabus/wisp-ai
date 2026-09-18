@@ -164,6 +164,9 @@ struct Mascot: View {
     let state: MascotState
     var side: CGFloat = 64
 
+    /// Ver Visibilidade.swift.
+    @Environment(\.mascoteAnimado) private var animado
+
     @ViewBuilder
     var body: some View {
         // The user's art takes precedence. The vector is the factory default,
@@ -171,14 +174,24 @@ struct Mascot: View {
         // missing.
         if let img = Sprites.image(state) {
             SpriteMascot(state: state, image: img, side: side * MARGIN)
-        } else {
+        } else if animado {
             TimelineView(.animation) { ctx in
-                let t = ctx.date.timeIntervalSinceReferenceDate
-                Canvas { g, size in draw(&g, size, t) }
-                    .frame(width: side * MARGIN, height: side * MARGIN)
+                vetor(ctx.date.timeIntervalSinceReferenceDate)
             }
             .accessibilityLabel("mascot: \(state.label)")
+        } else {
+            // `t = 0` é a pose de repouso deste desenho, e isso é uma
+            // propriedade do `draw` abaixo, não sorte: em zero a respiração
+            // fica em `phase = 0`, o ciclo de piscada começa com o olho ABERTO
+            // (`p = 0`, e só pisca acima de 0,972) e a chama não tremula.
+            vetor(0)
+                .accessibilityLabel("mascot: \(state.label)")
         }
+    }
+
+    private func vetor(_ t: TimeInterval) -> some View {
+        Canvas { g, size in draw(&g, size, t) }
+            .frame(width: side * MARGIN, height: side * MARGIN)
     }
 
     // MARK: - silhouette

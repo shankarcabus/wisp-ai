@@ -96,5 +96,10 @@ struct Panel: View {
         }
         .padding(Self.PAD)
         .frame(width: Self.LARGURA)
+        // O MenuBarExtra não destrói esta janela quando o painel fecha: só a
+        // tira da tela, com a aba parada onde ficou. Sem isto, um painel
+        // fechado na aba Settings segue animando oito mascotes para ninguém.
+        // Ver Visibilidade.swift.
+        .seguindoAVisibilidadeDaJanela()
     }
 }

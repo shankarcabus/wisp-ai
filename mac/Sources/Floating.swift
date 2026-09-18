@@ -55,6 +55,12 @@ struct FloatingContent: View {
         }
         .padding(8)
         // No background. See the comment at the top.
+        //
+        // Esta janela é escondida com `orderOut`, e não fechada, quando o
+        // mascote é desligado — e uma janela escondida continua recebendo um
+        // quadro por refresh se ninguém disser o contrário. Ver
+        // Visibilidade.swift.
+        .seguindoAVisibilidadeDaJanela()
     }
 
     /// A speech bubble with a little tail pointing at the mascot.

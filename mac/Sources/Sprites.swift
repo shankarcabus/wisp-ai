@@ -132,38 +132,54 @@ struct SpriteMascot: View {
     let image: Image
     var side: CGFloat = 64
 
+    /// Ver Visibilidade.swift. Fora da tela — ou numa fileira que é seletor — o
+    /// movimento não chega a ninguém, e o quadro é desperdício puro.
+    @Environment(\.mascoteAnimado) private var animado
+
+    @ViewBuilder
     var body: some View {
-        TimelineView(.animation) { ctx in
-            let t = ctx.date.timeIntervalSinceReferenceDate
-            let phase = sin(t / state.period * 2 * .pi)
-
-            // Squash & stretch: volume is conserved, so whatever stretches
-            // vertically shrinks horizontally. Without it the character just
-            // "inflates".
-            let s = 1 + phase * state.breath
-            // Floating follows the breathing, half a cycle behind — the body
-            // rises after filling up, the way it really happens.
-            let rise = CGFloat(sin(t / state.period * 2 * .pi - 0.9)) * side * 0.03
-            // Curiosity and distress tilt the head; work does not.
-            let tilt: Double = {
-                switch state {
-                case .asking:  return sin(t * 1.6) * 5
-                case .waiting: return sin(t * 2.4) * 3
-                case .error:   return -4
-                default:       return 0
-                }
-            }()
-
-            image
-                .resizable()
-                .interpolation(.high)
-                .aspectRatio(contentMode: .fit)
-                .frame(width: side, height: side)
-                .scaleEffect(x: 1 / s, y: s, anchor: .bottom)
-                .rotationEffect(.degrees(tilt), anchor: .bottom)
-                .offset(y: rise)
-                .frame(width: side * 1.2, height: side * 1.2)
+        if animado {
+            TimelineView(.animation) { ctx in
+                quadro(ctx.date.timeIntervalSinceReferenceDate)
+            }
+            .accessibilityLabel("mascot: \(state.label)")
+        } else {
+            quadro(nil)
+                .accessibilityLabel("mascot: \(state.label)")
         }
-        .accessibilityLabel("mascot: \(state.label)")
+    }
+
+    /// Um quadro do personagem. `t` nulo é a pose de REPOUSO — escala 1, sem
+    /// subida, sem inclinação — e não um instante qualquer congelado: parar num
+    /// `t` arbitrário pega o personagem no meio de um suspiro, torto.
+    private func quadro(_ t: Double?) -> some View {
+        // Squash & stretch: volume is conserved, so whatever stretches
+        // vertically shrinks horizontally. Without it the character just
+        // "inflates".
+        let s = t.map { 1 + sin($0 / state.period * 2 * .pi) * state.breath } ?? 1
+        // Floating follows the breathing, half a cycle behind — the body
+        // rises after filling up, the way it really happens.
+        let rise = t.map { CGFloat(sin($0 / state.period * 2 * .pi - 0.9)) * side * 0.03 } ?? 0
+        // Curiosity and distress tilt the head; work does not.
+        let tilt: Double = {
+            switch state {
+            case .asking:  return t.map { sin($0 * 1.6) * 5 } ?? 0
+            case .waiting: return t.map { sin($0 * 2.4) * 3 } ?? 0
+            // O -4 do erro é POSE, não movimento: zerá-lo na fileira parada
+            // tiraria justamente a expressão que distingue o estado.
+            case .error:   return -4
+            default:       return 0
+            }
+        }()
+
+        return image
+            .resizable()
+            .interpolation(.high)
+            .aspectRatio(contentMode: .fit)
+            .frame(width: side, height: side)
+            .scaleEffect(x: 1 / s, y: s, anchor: .bottom)
+            .rotationEffect(.degrees(tilt), anchor: .bottom)
+            .offset(y: rise)
+            .frame(width: side * 1.2, height: side * 1.2)
     }
 }

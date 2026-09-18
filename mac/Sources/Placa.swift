@@ -399,6 +399,9 @@ struct TelaMascote: View {
 struct TelaRepouso: View {
     @ObservedObject var bridge: Bridge
 
+    /// Ver Visibilidade.swift.
+    @Environment(\.mascoteAnimado) private var animado
+
     /// A hora e o dia o Mac formata sozinho.
     ///
     /// O bridge manda `clk` e `day` pré-formatados PARA A PLACA, e o motivo é a
@@ -427,7 +430,12 @@ struct TelaRepouso: View {
             // Um tique por minuto seria o certo, mas TimelineView não tem
             // "a cada minuto no minuto": .periodic de 60s desliza. O relógio
             // fica no segundo redondo pedindo o minuto seguinte.
-            TimelineView(.periodic(from: .now, by: 1)) { ctx in
+            //
+            // Com o painel fora da tela o tique não tem para quem tiquetaquear,
+            // e cada um reavalia a réplica inteira. Uma hora é o "praticamente
+            // parado" que não exige uma segunda forma da view: ao reaparecer, o
+            // `.now` é recalculado e o relógio volta ao segundo na hora certa.
+            TimelineView(.periodic(from: .now, by: animado ? 1 : 3600)) { ctx in
                 let agora = ctx.date
                 ZStack {
                     Text(Self.hora.string(from: agora))
