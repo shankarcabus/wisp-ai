@@ -1,9 +1,19 @@
 # Making a mascot
 
-Wisp ships with a character drawn as vectors, in code. This document is for
-replacing it with real art — hand-drawn, commissioned or generated.
+Wisp ships with three characters: **Wisp**, drawn as vectors in code, plus
+**Terminal** and **Bytelo**, whose sprites `./install.sh` puts into
+`~/.wisp/mascots/`. This document is for adding a fourth — hand-drawn,
+commissioned or generated.
 
 Drop the folder in `~/.wisp/mascots/<name>/` and pick it in the app's panel.
+
+> **Cloned before Bytelo was committed?** He was missing from the picker for
+> everyone but the person who had exported his sprites by hand, because the
+> board draws him in code and there was no art file to install. Run
+> `./install.sh` again, or regenerate them with
+> `WISP_MASCOT=bytelo ./sim/sprites.sh`. The installer leaves alone any
+> character whose folder already has `idle.png`, so art you put there yourself
+> is never overwritten.
 
 ## What you need to deliver
 

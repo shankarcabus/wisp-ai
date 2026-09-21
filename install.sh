@@ -149,15 +149,29 @@ ok "$DEST/Wisp.app"
 # from your IP.
 /usr/bin/python3 "$ROOT/bridge/config.py" | sed 's/^/   /'
 
-# The Terminal character, the same art the board draws. Without this the Mac
-# falls back to the built-in vector and the two halves of the project look
-# like different products. Copied, not linked, so deleting the clone does not
-# take the mascot with it.
-ARTE="$HOME/.wisp/mascots/terminal"
-if [[ ! -f "$ARTE/idle.png" ]]; then
-    mkdir -p "$ARTE"
-    cp "$ROOT"/firmware/assets/*.png "$ARTE"/ 2>/dev/null && ok "mascot installed"
-fi
+# The characters the project ships, so the Mac draws the same ones the board
+# draws. Without this the Mac falls back to the built-in vector and the two
+# halves of the project look like different products. Copied, not linked, so
+# deleting the clone does not take the mascots with it.
+#
+# They come from two places because they are DRAWN in two ways. The Terminal is
+# image art already — the board mounts it from the assets partition, so it
+# lives in firmware/assets and is copied straight from there. Bytelo the board
+# draws in code (mascote_bytelo.c), so no art file of his exists; the Mac's
+# eight PNGs are exported from the simulator and committed under mac/mascots.
+# See mac/mascots/bytelo/README.md.
+#
+# Bytelo used to be missing here, and the symptom was not an error: the picker
+# simply showed one character fewer, and only whoever had generated the sprites
+# by hand ever saw him.
+install_art() {   # <name> <source dir>
+    local dest="$HOME/.wisp/mascots/$1"
+    [[ -f "$dest/idle.png" ]] && return 0
+    mkdir -p "$dest"
+    cp "$2"/*.png "$dest"/ 2>/dev/null && ok "mascot '$1' installed"
+}
+install_art terminal "$ROOT/firmware/assets"
+install_art bytelo   "$ROOT/mac/mascots/bytelo"
 
 # ————————————————————————————————— 4. Claude Code hooks
 
