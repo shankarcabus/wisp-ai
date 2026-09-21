@@ -24,6 +24,7 @@
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "mdns.h"
+#include "mbedtls/sha256.h"
 #include "cJSON.h"
 #include "lvgl.h"
 #include "mascote.h"
@@ -749,6 +750,34 @@ static bool iniciar_wifi(void)
  *  Descoberta do bridge
  * ———————————————————————————————————————————————— */
 
+/* A nossa metade da identidade do par: os 4 primeiros bytes de SHA-256(token),
+ * em hexa. É exatamente o que o bridge publica no TXT `id` do serviço, e o
+ * cálculo está em bridge/announce.py — mudar um lado sem o outro desparelha a
+ * placa em silêncio, que é o pior jeito de isto falhar.
+ *
+ * Hash, e não o token: o TXT viaja em claro pela rede. Identificar é tudo o
+ * que ele precisa fazer; quem autentica continua sendo o token no cabeçalho. */
+static void token_fp(char out[9])
+{
+    out[0] = '\0';
+    if (!s_token[0]) return;
+
+    unsigned char h[32];
+    if (mbedtls_sha256((const unsigned char *)s_token, strlen(s_token), h, 0) != 0)
+        return;
+    for (int i = 0; i < 4; i++) snprintf(out + i * 2, 3, "%02x", h[i]);
+    out[8] = '\0';
+}
+
+/* O `id` que este anuncio traz no TXT, ou NULL se nao trouxer nenhum. */
+static const char *txt_id(const mdns_result_t *it)
+{
+    for (size_t i = 0; i < it->txt_count; i++)
+        if (it->txt[i].key && strcmp(it->txt[i].key, "id") == 0)
+            return it->txt[i].value;
+    return NULL;
+}
+
 /* Descobre onde esta o bridge.
  *
  * PRIMEIRO por SERVICO mDNS (_wisp._tcp), depois pelo hostname gravado na
@@ -758,20 +787,65 @@ static bool iniciar_wifi(void)
  * sempre que detecta conflito de nome na rede. Neste Mac ja aconteceu 7 vezes.
  * Quando ele virou "-7", o nome "Marcios-MacBook-Pro-6.local" gravado aqui
  * simplesmente deixou de existir e a placa ficou orfa. O nome do SERVICO nao
- * muda, e o proprio macOS mantem o endereco atualizado quando o DHCP troca. */
+ * muda, e o proprio macOS mantem o endereco atualizado quando o DHCP troca.
+ *
+ * QUAL BRIDGE, QUANDO HA MAIS DE UM
+ * ---------------------------------
+ * Ficar com o primeiro anuncio que trouxesse endereco bastava enquanto havia
+ * um Mac na rede. Com dois — duas pessoas, duas contas, mesmo WiFi — vira
+ * sorteio: a placa cai no bridge do outro, leva 401 porque o token nao e o
+ * mesmo, e a tela diz apenas "bridge offline". Medido em casa em 21/09/2026.
+ *
+ * Entao a primeira passada procura o anuncio cujo TXT `id` casa com o nosso
+ * token. So se nenhum casar e que vale o primeiro com endereco — que e o que
+ * mantem esta placa funcionando com um bridge anterior a esta mudanca, e com
+ * instalacao em modo aberto, onde nao ha token de onde derivar id. */
 static bool resolver_host(void)
 {
+    char meu[9];
+    token_fp(meu);
+
     mdns_result_t *r = NULL;
-    if (mdns_query_ptr("_wisp", "_tcp", 3000, 4, &r) == ESP_OK && r) {
+    if (mdns_query_ptr("_wisp", "_tcp", 3000, 8, &r) == ESP_OK && r) {
+        bool alguem_se_identifica = false;
+        for (mdns_result_t *it = r; it; it = it->next)
+            if (txt_id(it)) alguem_se_identifica = true;
+
+        /* Se temos token E ha bridge se identificando na rede, so serve o
+         * nosso. Aceitar outro nao e "melhor que nada": no bom caso e 401 e uma
+         * tela dizendo offline sem dizer por que, e no mau caso e um bridge em
+         * modo aberto adotando esta placa — que foi exatamente o que aconteceu
+         * aqui antes desta mudanca.
+         *
+         * A regra so endurece quando ha com o que comparar. Numa rede onde
+         * ninguem publica id — bridge anterior a isto, ou instalacao de modo
+         * aberto, onde nao ha token de onde derivar um — vale o primeiro com
+         * endereco, que e o comportamento de sempre. */
+        bool exigir_par = meu[0] && alguem_se_identifica;
+
         for (mdns_result_t *it = r; it; it = it->next) {
-            if (it->addr) {
-                esp_ip4_addr_t a = it->addr->addr.u_addr.ip4;
-                snprintf(s_ip, sizeof(s_ip), IPSTR, IP2STR(&a));
-                ESP_LOGI(TAG, "bridge achado pelo servico mDNS -> %s", s_ip);
-                mdns_query_results_free(r);
-                return true;
-            }
+            if (!it->addr) continue;
+            const char *id = txt_id(it);
+            bool e_o_meu = id && meu[0] && strcmp(id, meu) == 0;
+            if (exigir_par && !e_o_meu) continue;
+
+            esp_ip4_addr_t a = it->addr->addr.u_addr.ip4;
+            snprintf(s_ip, sizeof(s_ip), IPSTR, IP2STR(&a));
+            const char *quem = it->instance_name ? it->instance_name : "?";
+            if (e_o_meu)
+                ESP_LOGI(TAG, "bridge pareado pelo token (id=%s) -> %s", meu, s_ip);
+            else if (!meu[0])
+                ESP_LOGI(TAG, "placa sem token, nada a parear: '%s' -> %s", quem, s_ip);
+            else
+                ESP_LOGI(TAG, "nenhum bridge publica id nesta rede: '%s' -> %s",
+                         quem, s_ip);
+            mdns_query_results_free(r);
+            return true;
         }
+
+        if (exigir_par)
+            ESP_LOGW(TAG, "ha bridge na rede, mas nenhum com id=%s — e o de outra "
+                          "pessoa. Conferir se o Wisp esta aberto neste Mac", meu);
         mdns_query_results_free(r);
     }
 
