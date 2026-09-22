@@ -1218,9 +1218,22 @@ static void tarefa_rede(void *arg)
                 ui_update(&s_dados);
                 som_no_estado(&s_dados);
             }
-        } else if (++falhas == 5) {
-            /* Cinco erros seguidos: o bridge caiu ou o IP mudou.
-             * Zera o IP para forçar nova resolução mDNS na volta. */
+        } else if (++falhas >= 5) {
+            /* A cada cinco erros seguidos, e não apenas nos cinco primeiros.
+             *
+             * Com `== 5` a comparação era verdadeira UMA vez: `falhas` continua
+             * crescendo e só volta a zero quando um fetch dá certo, então a
+             * sexta falha já passava batido. Na prática a placa tinha direito a
+             * uma única tentativa de resolver de novo; se aquela também não
+             * resolvesse — e não resolvia, porque o endereço vinha de um AAAA
+             * lido como IPv4 — ela ficava presa no mesmo endereço morto para
+             * sempre, repetindo ESP_ERR_HTTP_CONNECT a cada três segundos sem
+             * nunca mais consultar o mDNS. Foi assim que "bridge offline" virou
+             * permanente e só saía com o cabo.
+             *
+             * Zerar aqui faz a contagem recomeçar, e a resolução volta a ser
+             * tentada enquanto o erro durar. */
+            falhas = 0;
             ESP_LOGW(TAG, "bridge inacessível (%s, status %d)", esp_err_to_name(r), status);
             s_ip[0] = '\0';
             wisp_data_t off = {.session_count = 1, .limits_age_s = -1};
