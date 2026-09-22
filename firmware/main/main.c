@@ -769,6 +769,27 @@ static void token_fp(char out[9])
     out[8] = '\0';
 }
 
+/* O IPv4 deste anuncio, se houver.
+ *
+ * `it->addr` e uma LISTA, e numa rede com IPv6 ativo o AAAA costuma vir antes
+ * do A. Ler `u_addr.ip4` sem olhar o `type` da union pega os quatro primeiros
+ * bytes do IPv6 e os escreve como se fossem um IPv4 — medido aqui em
+ * 22/09/2026, quando um endereco 2804:14d:... virou "40.4.1.77" e a placa
+ * passou a bater num endereco que nao existe. O pior era o log: dizia "bridge
+ * pareado pelo token", em tom de sucesso, com lixo no lugar do endereco.
+ *
+ * Aqui so IPv4 serve, porque e o que o resto desta funcao grava em `s_ip`. */
+static bool ipv4_do_anuncio(const mdns_result_t *it, esp_ip4_addr_t *out)
+{
+    for (mdns_ip_addr_t *a = it->addr; a; a = a->next) {
+        if (a->addr.type == ESP_IPADDR_TYPE_V4) {
+            *out = a->addr.u_addr.ip4;
+            return true;
+        }
+    }
+    return false;
+}
+
 /* O `id` que este anuncio traz no TXT, ou NULL se nao trouxer nenhum. */
 static const char *txt_id(const mdns_result_t *it)
 {
@@ -824,12 +845,12 @@ static bool resolver_host(void)
         bool exigir_par = meu[0] && alguem_se_identifica;
 
         for (mdns_result_t *it = r; it; it = it->next) {
-            if (!it->addr) continue;
+            esp_ip4_addr_t a;
+            if (!ipv4_do_anuncio(it, &a)) continue;
             const char *id = txt_id(it);
             bool e_o_meu = id && meu[0] && strcmp(id, meu) == 0;
             if (exigir_par && !e_o_meu) continue;
 
-            esp_ip4_addr_t a = it->addr->addr.u_addr.ip4;
             snprintf(s_ip, sizeof(s_ip), IPSTR, IP2STR(&a));
             const char *quem = it->instance_name ? it->instance_name : "?";
             if (e_o_meu)
